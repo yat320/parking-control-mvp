@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Parking Control MVP</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%232f81f7%22/%3E%3Ctext x=%228%22 y=%2212.5%22 font-size=%2212%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22 font-weight=%22bold%22%3EP%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Parking Control <small>MVP</small></h1>
+    <div id="barrera" class="barrera cerrada">BARRERA CERRADA</div>
+  </header>
+
+  <main>
+    <section class="video card">
+      <div class="video-box">
+        <img id="feed" alt="Video procesado">
+        <p id="sin-video" class="placeholder">Tocá <b>Procesar video</b> para empezar.</p>
+      </div>
+      <div class="progress"><div id="progreso"></div></div>
+      <div class="acciones">
+        <button id="btn-procesar" class="primario">Procesar video</button>
+        <button id="btn-detener">Detener</button>
+        <button id="btn-abrir">Abrir barrera (manual)</button>
+        <label><input type="checkbox" id="guardar" checked> Guardar video procesado</label>
+      </div>
+      <p class="meta">Video: <code>{{ video }}</code> · detector: <code>{{ detector }}</code> ·
+        escala de tiempo: 1 s de video = {{ time_scale|int }} s de estadía ·
+        <span id="mensaje"></span></p>
+      <p id="error" class="error"></p>
+    </section>
+
+    <section class="card">
+      <h2>Resumen</h2>
+      <div class="stats">
+        <div><b id="s-entradas">0</b><span>entradas</span></div>
+        <div><b id="s-salidas">0</b><span>salidas</span></div>
+        <div><b id="s-adentro">0</b><span>adentro</span></div>
+        <div><b id="s-recaudado">$0</b><span>recaudado</span></div>
+      </div>
+      <h3>Autos adentro</h3>
+      <ul id="adentro" class="adentro"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Tarifa</h2>
+      <form id="form-tarifa">
+        <label>Precio por hora <input type="number" id="tarifa-hora" min="0" step="any" required></label>
+        <label>Fracción (min) <input type="number" id="fraccion" min="1" max="1440" required></label>
+        <button type="submit">Guardar tarifa</button>
+        <span id="tarifa-ok" class="ok"></span>
+      </form>
+      <p class="meta">Se cobra cada fracción iniciada (mínimo una). Aplica a las salidas que se registren desde ahora.</p>
+      <h2>Demo</h2>
+      <button id="btn-reset" class="peligro">Resetear demo</button>
+      <p class="meta">Borra todos los eventos y cierra la barrera. La tarifa se mantiene.</p>
+    </section>
+
+    <section class="card ancho">
+      <h2>Últimos eventos</h2>
+      <div class="tabla">
+        <table>
+          <thead><tr><th>#</th><th>Tipo</th><th>Hora</th><th>Vehículo</th><th>Track</th><th>Barrera</th><th>Estadía</th><th>Monto</th></tr></thead>
+          <tbody id="eventos"><tr><td colspan="8" class="vacio">Sin eventos todavía.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
