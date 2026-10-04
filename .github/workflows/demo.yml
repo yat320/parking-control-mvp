@@ -1,0 +1,42 @@
+# En cada push (o a mano desde la pestaña Actions → "Run workflow"):
+# corre las pruebas, procesa el video de prueba y deja el video procesado
+# y la base de datos para descargar en "Artifacts".
+name: Demo
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Pruebas
+        run: python -m unittest discover tests -v
+      - name: Procesar el video de prueba
+        run: python -m app.video_processor --reset | tee output/resumen.txt
+      - name: Eventos registrados
+        run: |
+          python - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          from app import database
+          print("| # | Tipo | Hora | Vehículo | Barrera | Estadía (s) | Monto |")
+          print("|---|---|---|---|---|---|---|")
+          for e in reversed(database.list_events()):
+              print(f"| {e['id']} | {e['tipo_evento']} | {e['timestamp']} | {e['vehicle_id']} | "
+                    f"{e['estado_barrera']} | {e['duracion_seg'] or ''} | {e['monto'] or ''} |")
+          s = database.stats()
+          print(f"\n**Entradas {s['entradas']} · salidas {s['salidas']} · adentro {s['adentro']} · recaudado ${s['recaudado']}**")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo-procesada
+          path: |
+            output/processed_video.mp4
+            output/resumen.txt
+            data/parking.db

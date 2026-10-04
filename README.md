@@ -7,12 +7,36 @@ barrera, calcula la estadía y el monto, guarda todo en SQLite y lo muestra en u
 Fuera de alcance en esta etapa: lectura de patentes (OCR), pagos reales y hardware real
 (la barrera está simulada, con un punto de enganche para conectarla después).
 
-## Requisitos
+## Usarlo desde GitHub, sin instalar nada
+
+### Panel web en un Codespace
+
+[![Abrir en GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/yat320/parking-control-mvp?quickstart=1)
+
+1. Tocá el botón de arriba (o en el repo: **Code → Codespaces → Create codespace on main**).
+2. Esperá un par de minutos la primera vez: instala las dependencias y arranca el servidor solo.
+3. Se abre el panel en otra pestaña. Si no se abre: pestaña **PORTS** de abajo → puerto **8000** → ícono del globo.
+4. Tocá **Procesar video**.
+
+Funciona desde el navegador de la PC o del celular. El Codespace se apaga solo después de 30 min
+sin uso; para volver: https://github.com/codespaces y elegir el de este repo (el servidor arranca
+de nuevo al abrirlo). Las cuentas personales tienen horas gratis por mes; ver el uso en
+https://github.com/settings/billing.
+
+### Demo automática en Actions
+
+En cada push, y cuando quieras desde **Actions → Demo → Run workflow**, GitHub corre las pruebas,
+procesa el video de prueba y deja:
+
+- la tabla de eventos en el resumen de la corrida,
+- el video procesado, el resumen y la base SQLite para descargar en **Artifacts → demo-procesada**.
+
+## Requisitos (para correrlo en una PC)
 
 - Python 3.10 o más nuevo
 - No hace falta GPU, internet ni servicios pagos.
 
-## Instalación
+## Instalación en una PC
 
 ```bash
 cd parking-control-mvp

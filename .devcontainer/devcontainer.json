@@ -1,0 +1,16 @@
+{
+  // Configuración de GitHub Codespaces: al abrir el repo en un Codespace se
+  // instalan las dependencias y arranca el servidor solo en el puerto 8000.
+  "name": "Parking Control MVP",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "postCreateCommand": "pip install --user -r requirements.txt",
+  "postAttachCommand": "bash .devcontainer/start.sh",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": { "label": "Panel web", "onAutoForward": "openBrowser" }
+  },
+  "customizations": {
+    "vscode": { "extensions": ["ms-python.python"] },
+    "codespaces": { "openFiles": ["README.md"] }
+  }
+}
