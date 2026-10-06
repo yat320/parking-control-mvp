@@ -4,6 +4,9 @@
   "name": "Parking Control MVP",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
   "postCreateCommand": "pip install --user -r requirements.txt && (python tools/descargar_video_real.py || echo 'No se pudo bajar el video real; el de prueba anda igual.')",
+  // El panel arranca en segundo plano cada vez que se prende el Codespace
+  // (no depende de que VS Code confíe en la carpeta). Log: /tmp/panel.log
+  "postStartCommand": "setsid nohup bash .devcontainer/start.sh > /tmp/panel.log 2>&1 &",
   "postAttachCommand": "bash .devcontainer/start.sh",
   "forwardPorts": [8000],
   "portsAttributes": {
