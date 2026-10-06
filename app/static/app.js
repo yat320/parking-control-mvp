@@ -43,6 +43,18 @@ async function refrescar() {
     $("adentro").innerHTML = e.adentro.length
       ? e.adentro.map((a) => `<li><b>${esc(a.vehicle_id)}</b> desde ${esc(hora(a.timestamp))}</li>`).join("")
       : '<li class="vacio">Ninguno</li>';
+    const sel = $("video");
+    const nombres = e.videos.map((v) => v.nombre).join("|");
+    if (sel.dataset.lista !== nombres) {  // rearmar solo si cambió la lista
+      const elegido = sel.value || e.video;
+      sel.innerHTML = e.videos.map((v) => `<option value="${esc(v.nombre)}">${esc(v.nombre)}</option>`).join("");
+      if (e.videos.some((v) => v.nombre === elegido)) sel.value = elegido;
+      sel.dataset.lista = nombres;
+    }
+    if (e.procesando) sel.value = e.video;
+    sel.disabled = e.procesando;
+    const info = e.videos.find((v) => v.nombre === sel.value);
+    $("video-desc").textContent = info && info.descripcion ? info.descripcion + " ·" : "";
     if (!tarifaCargada) {
       $("tarifa-hora").value = e.tarifa.tarifa_hora;
       $("fraccion").value = e.tarifa.fraccion_min;
@@ -68,10 +80,11 @@ $("btn-procesar").onclick = async () => {
   try {
     // Reconectar el stream por si el navegador lo cortó.
     $("feed").src = "/video_feed?t=" + Date.now();
-    await api("/api/procesar", { guardar_video: $("guardar").checked });
+    await api("/api/procesar", { guardar_video: $("guardar").checked, video: $("video").value });
     refrescar();
   } catch (err) { $("error").textContent = err.message; }
 };
+$("video").onchange = refrescar;
 $("btn-detener").onclick = () => api("/api/detener", {}).then(refrescar);
 $("btn-abrir").onclick = () => api("/api/barrera/abrir", {}).then(refrescar).catch((err) => ($("error").textContent = err.message));
 $("btn-reset").onclick = async () => {

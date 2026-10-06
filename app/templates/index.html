@@ -21,12 +21,13 @@
       </div>
       <div class="progress"><div id="progreso"></div></div>
       <div class="acciones">
+        <select id="video" aria-label="Video a procesar"></select>
         <button id="btn-procesar" class="primario">Procesar video</button>
         <button id="btn-detener">Detener</button>
         <button id="btn-abrir">Abrir barrera (manual)</button>
         <label><input type="checkbox" id="guardar" checked> Guardar video procesado</label>
       </div>
-      <p class="meta">Video: <code>{{ video }}</code> · detector: <code>{{ detector }}</code> ·
+      <p class="meta"><span id="video-desc"></span> Detector: <code>{{ detector }}</code> ·
         escala de tiempo: 1 s de video = {{ time_scale|int }} s de estadía ·
         <span id="mensaje"></span></p>
       <p id="error" class="error"></p>

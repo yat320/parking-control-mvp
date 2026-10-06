@@ -68,5 +68,31 @@ class EndToEndTest(unittest.TestCase):
         self.assertTrue((TMP / "out.mp4").stat().st_size > 0)
 
 
+class VideoSettingsTest(unittest.TestCase):
+    def test_json_al_lado_del_video(self):
+        video = TMP / "cam.mp4"
+        defaults = {"line": (0, 0.5, 1, 0.5), "entry_sign": 1, "min_area": 2500}
+        self.assertEqual(config.video_settings(video, defaults), defaults)  # sin .json
+        video.with_suffix(".json").write_text('{"line": [0.5, 1, 0.5, 0], "entry_direction": "up"}')
+        opts = config.video_settings(video, defaults)
+        self.assertEqual(opts["line"], (0.5, 1.0, 0.5, 0.0))
+        self.assertEqual(opts["entry_sign"], -1)
+        self.assertEqual(opts["min_area"], 2500)
+
+
+REAL_VIDEO = Path(__file__).resolve().parent.parent / "videos" / "calle_real.avi"
+
+
+@unittest.skipUnless(REAL_VIDEO.exists(), "falta el video real: python tools/descargar_video_real.py")
+class RealVideoTest(unittest.TestCase):
+    """Video real de una calle: cruzan 5 autos de izquierda a derecha."""
+
+    def test_cinco_entradas(self):
+        database.init_db()
+        database.reset_events()
+        events = VideoProcessor(detector_kind="motion").process(REAL_VIDEO, TMP / "real.mp4")
+        self.assertEqual([e["tipo_evento"] for e in events], ["entrada"] * 5)
+
+
 if __name__ == "__main__":
     unittest.main()

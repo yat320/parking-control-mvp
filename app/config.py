@@ -3,6 +3,7 @@
 Todo se puede cambiar con variables de entorno, así no hace falta tocar código
 para probar con otro video u otra línea virtual.
 """
+import json
 import os
 from pathlib import Path
 
@@ -39,3 +40,24 @@ TIME_SCALE = float(os.getenv("PARKING_TIME_SCALE", "60"))
 # Tarifa por defecto (se puede cambiar desde la web; queda guardada en SQLite).
 DEFAULT_RATE_PER_HOUR = float(os.getenv("PARKING_RATE", "1000"))
 DEFAULT_FRACTION_MINUTES = int(os.getenv("PARKING_FRACTION", "15"))
+
+
+def video_settings(video_path: Path, defaults: dict) -> dict:
+    """Ajustes propios de un video, leídos de un .json con el mismo nombre.
+
+    Ejemplo de videos/calle_real.json:
+        {"line": [0.5, 0.95, 0.5, 0.05], "entry_direction": "down", "min_area": 300}
+    Lo que no esté en el archivo queda con el valor de `defaults`
+    (claves: line, entry_sign, min_area).
+    """
+    opts = dict(defaults)
+    sidecar = Path(video_path).with_suffix(".json")
+    if sidecar.exists():
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+        if "line" in data:
+            opts["line"] = tuple(float(v) for v in data["line"])
+        if "entry_direction" in data:
+            opts["entry_sign"] = 1 if data["entry_direction"] == "down" else -1
+        if "min_area" in data:
+            opts["min_area"] = int(data["min_area"])
+    return opts

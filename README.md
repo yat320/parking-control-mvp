@@ -29,7 +29,52 @@ En cada push, y cuando quieras desde **Actions → Demo → Run workflow**, GitH
 procesa el video de prueba y deja:
 
 - la tabla de eventos en el resumen de la corrida,
-- el video procesado, el resumen y la base SQLite para descargar en **Artifacts → demo-procesada**.
+- el video procesado, el resumen y la base SQLite para descargar en **Artifacts → demo-procesada**
+  (también el video real procesado, `calle_real_procesado.mp4`).
+
+## Probar con un video real
+
+```bash
+python tools/descargar_video_real.py
+```
+
+Baja `videos/calle_real.avi`: 12,5 s de una calle real vista desde arriba (320×176), con 5 autos
+que cruzan de izquierda a derecha. El sistema registra las 5 entradas (verificado cuadro por
+cuadro); no hay salidas porque ningún auto cruza en el otro sentido. En el Codespace se baja solo.
+En la web elegilo en el selector de al lado de **Procesar video**; por consola:
+
+```bash
+python -m app.video_processor --video videos/calle_real.avi --reset
+```
+
+Fuente: dataset del proyecto [simple_vehicle_counting](https://github.com/andrewssobral/simple_vehicle_counting)
+de Andrews Sobral. Ese repo no declara licencia, por eso el video no se sube a este repositorio:
+el script lo baja para pruebas locales.
+
+### Ajustes por video
+
+Cada video puede tener al lado un `.json` con el mismo nombre (`videos/calle_real.json`) que
+cambia la configuración solo para ese video. En ese video los autos cruzan de costado, así que
+la línea es vertical:
+
+```json
+{
+  "descripcion": "Texto que se muestra en la web",
+  "line": [0.5, 0.95, 0.5, 0.05],
+  "entry_direction": "down",
+  "min_area": 300
+}
+```
+
+- `line`: `x1, y1, x2, y2` en fracciones del ancho y alto. Regla: parado en (x1,y1) mirando
+  hacia (x2,y2), pasar hacia tu **derecha** es **entrada**. Con una línea horizontal de izquierda
+  a derecha, entrar es cruzar hacia abajo; con una vertical dibujada de abajo hacia arriba,
+  entrar es cruzar hacia la derecha. `entry_direction: "up"` lo invierte.
+- `min_area`: área mínima en píxeles del video original (bajala en videos chicos).
+
+Con tu propio video: copialo a `videos/`, creale su `.json` con la línea donde está la barrera y
+elegilo en la web. Los videos de menos de 640 px de ancho se agrandan para dibujar, así los
+textos se leen.
 
 ## Requisitos (para correrlo en una PC)
 

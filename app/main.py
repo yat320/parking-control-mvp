@@ -13,6 +13,7 @@ Rutas:
   POST /api/barrera/abrir apertura manual (como el botón de la cabina)
   POST /api/reset         borra los eventos y cierra la barrera
 """
+import json
 import threading
 from contextlib import asynccontextmanager
 import time
@@ -54,11 +55,32 @@ _last_error = ""
 _manual_open_t0 = time.monotonic()  # reloj para la apertura manual (fuera del video)
 
 
-def _run_processing(save_output: bool) -> None:
+VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv"}
+_current_video = config.VIDEO_PATH.name
+
+
+def _list_videos() -> list[dict]:
+    """Videos en la carpeta videos/, con la descripción de su .json si tiene."""
+    folder = config.VIDEO_PATH.parent
+    out = []
+    for p in sorted(folder.iterdir()) if folder.exists() else []:
+        if p.suffix.lower() not in VIDEO_EXTS:
+            continue
+        desc = ""
+        if p.with_suffix(".json").exists():
+            try:
+                desc = json.loads(p.with_suffix(".json").read_text(encoding="utf-8")).get("descripcion", "")
+            except ValueError:
+                desc = "(el .json de este video tiene un error)"
+        out.append({"nombre": p.name, "descripcion": desc})
+    return out
+
+
+def _run_processing(video: Path, save_output: bool) -> None:
     global _last_error
     try:
         _last_error = ""
-        processor.process(config.VIDEO_PATH, config.OUTPUT_PATH if save_output else None, realtime=True)
+        processor.process(video, config.OUTPUT_PATH if save_output else None, realtime=True)
     except Exception as e:  # se muestra en la web en vez de morir en silencio
         _last_error = str(e)
         print(f"[ERROR] {e}", flush=True)
@@ -73,7 +95,6 @@ def _manual_clock() -> float:
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {
-        "video": config.VIDEO_PATH.name,
         "detector": config.DETECTOR,
         "time_scale": config.TIME_SCALE,
     })
@@ -115,7 +136,8 @@ def estado():
         "tarifa": database.get_pricing(),
         "stats": database.stats(),
         "adentro": database.list_inside(),
-        "video": config.VIDEO_PATH.name,
+        "video": _current_video,
+        "videos": _list_videos(),
         "hay_video_salida": config.OUTPUT_PATH.exists(),
         "hora": datetime.now().isoformat(timespec="seconds"),
     }
@@ -128,17 +150,21 @@ def eventos(limit: int = 50):
 
 class ProcesarIn(BaseModel):
     guardar_video: bool = True
+    video: str | None = None  # nombre de un archivo de videos/ (por defecto, video_test.mp4)
 
 
 @app.post("/api/procesar")
 def procesar(body: ProcesarIn | None = None):
-    global _thread
+    global _thread, _current_video
     if processor.running:
         raise HTTPException(409, "Ya se está procesando un video")
-    if not config.VIDEO_PATH.exists():
-        raise HTTPException(404, f"No existe {config.VIDEO_PATH}")
+    name = (body.video if body else None) or config.VIDEO_PATH.name
+    # Solo se aceptan nombres de la lista (evita rutas como ../../algo).
+    if name not in {v["nombre"] for v in _list_videos()}:
+        raise HTTPException(404, f"No existe el video {name!r} en {config.VIDEO_PATH.parent}")
+    _current_video = name
     save = body.guardar_video if body else True
-    _thread = threading.Thread(target=_run_processing, args=(save,), daemon=True)
+    _thread = threading.Thread(target=_run_processing, args=(config.VIDEO_PATH.parent / name, save), daemon=True)
     _thread.start()
     return {"ok": True}
 

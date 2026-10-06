@@ -4,3 +4,7 @@ __pycache__/
 data/*.db
 output/*.mp4
 videos/*.mp4
+videos/*.avi
+videos/*.mov
+videos/*.mkv
+videos/calle_real.json

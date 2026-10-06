@@ -3,7 +3,7 @@
   // instalan las dependencias y arranca el servidor solo en el puerto 8000.
   "name": "Parking Control MVP",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
-  "postCreateCommand": "pip install --user -r requirements.txt",
+  "postCreateCommand": "pip install --user -r requirements.txt && (python tools/descargar_video_real.py || echo 'No se pudo bajar el video real; el de prueba anda igual.')",
   "postAttachCommand": "bash .devcontainer/start.sh",
   "forwardPorts": [8000],
   "portsAttributes": {

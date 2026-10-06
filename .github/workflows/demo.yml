@@ -17,8 +17,12 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Pruebas
+      - name: Bajar el video real
+        run: python tools/descargar_video_real.py
+      - name: Pruebas (incluye el video real)
         run: python -m unittest discover tests -v
+      - name: Procesar el video real
+        run: python -m app.video_processor --video videos/calle_real.avi --output output/calle_real_procesado.mp4 --reset | tee output/resumen_calle_real.txt
       - name: Procesar el video de prueba
         run: python -m app.video_processor --reset | tee output/resumen.txt
       - name: Eventos registrados
@@ -39,4 +43,6 @@ jobs:
           path: |
             output/processed_video.mp4
             output/resumen.txt
+            output/calle_real_procesado.mp4
+            output/resumen_calle_real.txt
             data/parking.db
