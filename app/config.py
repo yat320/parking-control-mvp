@@ -13,6 +13,12 @@ DB_PATH = Path(os.getenv("PARKING_DB", BASE_DIR / "data" / "parking.db"))
 VIDEO_PATH = Path(os.getenv("PARKING_VIDEO", BASE_DIR / "videos" / "video_test.mp4"))
 OUTPUT_PATH = Path(os.getenv("PARKING_OUTPUT", BASE_DIR / "output" / "processed_video.mp4"))
 
+# Cámara en vivo: URL RTSP/HTTP de una cámara IP ("rtsp://usuario:clave@192.168.1.50:554/stream1")
+# o el número de una webcam USB ("0"). Vacío = sin cámara (solo videos grabados).
+CAMERA = os.getenv("PARKING_CAMERA", "").strip()
+# Segundos entre reintentos cuando la cámara deja de responder.
+CAMERA_RETRY_SECONDS = float(os.getenv("PARKING_CAMERA_RETRY", "3"))
+
 # Detector a usar: "motion" (sustracción de fondo, sin dependencias extra) o "yolo".
 DETECTOR = os.getenv("PARKING_DETECTOR", "motion")
 

@@ -12,6 +12,7 @@ Rutas:
   GET  /api/eventos.csv   todos los eventos en CSV (se abre con Excel)
   POST /api/tarifa        {"tarifa_hora": 1000, "fraccion_min": 15, "tolerancia_min": 0, "tope_diario": 0}
   POST /api/barrera/abrir apertura manual (como el botón de la cabina)
+  POST /api/linea         {"line": [x1, y1, x2, y2], "entry_direction": "down"} línea de la cámara en vivo
   POST /api/reset         borra los eventos y cierra la barrera
 """
 import csv
@@ -31,6 +32,7 @@ from pydantic import BaseModel, Field
 
 from . import config, database
 from .barrier_controller import BarrierController
+from .camera import mask_source
 from .demo_video import generate as generate_demo_video
 from .video_processor import VideoProcessor
 
@@ -59,6 +61,7 @@ _manual_open_t0 = time.monotonic()  # reloj para la apertura manual (fuera del v
 
 
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv"}
+CAMERA_NAME = "camara"  # nombre de la cámara en vivo en el selector (ningún archivo se llama así: no tiene extensión)
 _current_video = config.VIDEO_PATH.name
 
 
@@ -66,6 +69,9 @@ def _list_videos() -> list[dict]:
     """Videos en la carpeta videos/, con la descripción de su .json si tiene."""
     folder = config.VIDEO_PATH.parent
     out = []
+    if config.CAMERA:
+        out.append({"nombre": CAMERA_NAME, "etiqueta": "Cámara en vivo", "en_vivo": True,
+                    "descripcion": f"Cámara en vivo ({mask_source(config.CAMERA)})"})
     for p in sorted(folder.iterdir()) if folder.exists() else []:
         if p.suffix.lower() not in VIDEO_EXTS:
             continue
@@ -79,11 +85,16 @@ def _list_videos() -> list[dict]:
     return out
 
 
-def _run_processing(video: Path, save_output: bool) -> None:
+def _run_processing(video: Path | None, save_output: bool) -> None:
+    """video=None procesa la cámara en vivo."""
     global _last_error
     try:
         _last_error = ""
-        processor.process(video, config.OUTPUT_PATH if save_output else None, realtime=True)
+        if video is None:
+            linea = database.get_camera_line()
+            processor.process_live(config.CAMERA, line=linea["line"], entry_direction=linea["entry_direction"])
+        else:
+            processor.process(video, config.OUTPUT_PATH if save_output else None, realtime=True)
     except Exception as e:  # se muestra en la web en vez de morir en silencio
         _last_error = str(e)
         print(f"[ERROR] {e}", flush=True)
@@ -132,6 +143,10 @@ def estado():
     return {
         "barrera": barrier.state,
         "procesando": processor.running,
+        "en_vivo": processor.live,
+        "sin_senal": processor.live and not processor.signal,
+        "reconexiones": processor.reconnects if processor.live else 0,
+        "linea_camara": database.get_camera_line() if config.CAMERA else None,
         "progreso": round(processor.progress, 3),
         "detectados": processor.detected_now if processor.running else 0,
         "ultimo_mensaje": processor.last_message,
@@ -188,7 +203,8 @@ def procesar(body: ProcesarIn | None = None):
         raise HTTPException(404, f"No existe el video {name!r} en {config.VIDEO_PATH.parent}")
     _current_video = name
     save = body.guardar_video if body else True
-    _thread = threading.Thread(target=_run_processing, args=(config.VIDEO_PATH.parent / name, save), daemon=True)
+    video = None if name == CAMERA_NAME else config.VIDEO_PATH.parent / name
+    _thread = threading.Thread(target=_run_processing, args=(video, save), daemon=True)
     _thread.start()
     return {"ok": True}
 
@@ -218,6 +234,27 @@ def abrir_barrera():
         raise HTTPException(409, "La barrera la maneja el video mientras se procesa")
     barrier.open(_manual_clock(), reason="manual")
     return {"barrera": barrier.state}
+
+
+class LineaIn(BaseModel):
+    line: list[float] = Field(min_length=4, max_length=4)  # x1, y1, x2, y2 en fracciones del cuadro
+    entry_direction: str = Field(default="down", pattern="^(down|up)$")
+
+
+@app.post("/api/linea")
+def linea(body: LineaIn):
+    """Guarda la línea virtual de la cámara y, si se está viendo, la aplica al toque."""
+    if not config.CAMERA:
+        raise HTTPException(409, "No hay cámara configurada (variable PARKING_CAMERA)")
+    x1, y1, x2, y2 = body.line
+    if not all(0 <= v <= 1 for v in body.line):
+        raise HTTPException(422, "Los puntos van de 0 a 1 (fracción del ancho y del alto)")
+    if abs(x2 - x1) + abs(y2 - y1) < 0.05:
+        raise HTTPException(422, "Los dos puntos de la línea están demasiado cerca")
+    database.set_camera_line(body.line, body.entry_direction)
+    if processor.live:
+        processor.set_line(body.line, body.entry_direction)
+    return database.get_camera_line()
 
 
 @app.post("/api/reset")

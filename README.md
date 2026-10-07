@@ -111,6 +111,44 @@ Con tu propio video: copialo a `videos/`, creale su `.json` con la línea donde 
 elegilo en la web. Los videos de menos de 640 px de ancho se agrandan para dibujar, así los
 textos se leen.
 
+## Cámara en vivo
+
+En vez de un video grabado, el sistema puede leer una cámara: una IP por RTSP o HTTP, o una
+webcam USB. Se configura con una variable antes de arrancar:
+
+```bash
+PARKING_CAMERA="rtsp://usuario:clave@192.168.1.50:554/stream1" uvicorn app.main:app   # cámara IP
+PARKING_CAMERA=0 uvicorn app.main:app                                                  # webcam USB
+```
+
+En la web aparece **Cámara en vivo** en el selector. Elegila y tocá **Procesar video**; queda
+andando hasta que toques **Detener**. Con la cámara andando:
+
+- **Marcar línea**: tocás dos puntos sobre la imagen y esa pasa a ser la línea virtual. Queda
+  guardada y se aplica en el momento, sin reiniciar.
+- **Invertir sentido**: si cuenta las entradas como salidas.
+
+Por consola, sin web: `python -m app.video_processor --camera` (Ctrl+C para cortar).
+
+Diferencias con un video grabado:
+
+- La hora de cada evento es la de la PC y la estadía es la real (no se usa `PARKING_TIME_SCALE`).
+- Si la cámara se corta (luz, wifi, reinicio), el panel avisa **SIN SEÑAL** y reintenta cada
+  `PARKING_CAMERA_RETRY` segundos (3) hasta que vuelve. Los autos que pasen durante el corte no
+  se registran.
+- Siempre se procesa el cuadro más nuevo: si la PC no da abasto se saltean cuadros, pero la
+  imagen no se atrasa.
+- No se guarda video procesado.
+- La clave de la cámara no se muestra en la web ni en los logs.
+
+La dirección RTSP depende de la marca: figura en el manual o en la app de la cámara (buscar
+"RTSP" u "ONVIF"), y en muchas hay que habilitarlo. Para probar que la dirección anda antes de
+usarla acá: abrirla en VLC (**Medio → Abrir ubicación de red**).
+
+Probado con una cámara simulada por red (el video de prueba transmitido por HTTP a velocidad
+real, con cortes): registra los mismos 6 eventos en cada pasada y se reconecta sola. Falta
+probarlo con una cámara física.
+
 ## Requisitos (para correrlo en una PC)
 
 - Python 3.10 o más nuevo
@@ -202,6 +240,7 @@ video ──> detector ──> tracker ──> ¿cruzó la línea? ──> barre
 | `app/main.py` | Servidor FastAPI: panel web, API y stream MJPEG del video procesado. |
 | `app/video_processor.py` | Bucle por frame: detecta, trackea, detecta cruces, registra eventos, dibuja y guarda el video. También es el comando de consola. |
 | `app/detection.py` | Detectores. `MotionDetector` (sustracción de fondo) y `YoloDetector` (opcional). |
+| `app/camera.py` | Lector de cámara en vivo: se queda con el último cuadro y se reconecta si se corta. |
 | `app/tracker.py` | Tracker por centroides: le da un `tracking_id` estable a cada auto. |
 | `app/barrier_controller.py` | Barrera simulada: abierta/cerrada, se cierra sola a los N segundos. |
 | `app/pricing.py` | Tarifa: fracción iniciada (mínimo una), tolerancia sin cargo y tope por día. |
@@ -278,6 +317,7 @@ Todo por variables de entorno (valores por defecto entre paréntesis):
 | `PARKING_VIDEO` (`videos/video_test.mp4`) | video a procesar |
 | `PARKING_OUTPUT` (`output/processed_video.mp4`) | video procesado |
 | `PARKING_DB` (`data/parking.db`) | base SQLite |
+| `PARKING_CAMERA` (vacío) / `PARKING_CAMERA_RETRY` (`3`) | cámara en vivo (URL RTSP/HTTP o número de webcam) y segundos entre reintentos |
 | `PARKING_DETECTOR` (`motion`) | `motion` o `yolo` |
 | `PARKING_LINE` (`0.05,0.55,0.95,0.55`) | línea virtual `x1,y1,x2,y2` en fracciones del frame |
 | `PARKING_ENTRY_DIRECTION` (`down`) | sentido de entrada: `down` o `up` |
@@ -320,14 +360,15 @@ ByteTrack (`model.track(...)` de ultralytics): solo tiene que devolver el mismo 
 | GET | `/api/eventos.csv` | todos los eventos en CSV (separador `;`, se abre con Excel) |
 | POST | `/api/tarifa` | `{"tarifa_hora": 1000, "fraccion_min": 15, "tolerancia_min": 10, "tope_diario": 8000}` |
 | POST | `/api/barrera/abrir` | apertura manual |
+| POST | `/api/linea` | `{"line": [x1, y1, x2, y2], "entry_direction": "down"}` línea de la cámara en vivo |
 | POST | `/api/reset` | borra los eventos y cierra la barrera |
 
 Documentación interactiva: http://localhost:8000/docs
 
 ## Próximos pasos sugeridos
 
-1. Probar con video real de la cochera y ajustar `PARKING_LINE` y `PARKING_MIN_AREA`.
-2. Cámara en vivo: `cv2.VideoCapture("rtsp://usuario:clave@ip/stream")` en lugar del archivo.
+1. Probar con una cámara física en la cochera: marcar la línea desde la web y ajustar `PARKING_MIN_AREA`.
+2. Que la cámara arranque sola al prender la PC (hoy hay que tocar **Procesar video**).
 3. YOLO + ByteTrack para descartar personas y autos quietos.
 4. OCR de patentes para emparejar entrada y salida por patente.
 5. Barrera real en `_actuate()` y cobro real.

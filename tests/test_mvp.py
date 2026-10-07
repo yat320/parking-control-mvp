@@ -120,6 +120,82 @@ class EndToEndTest(unittest.TestCase):
         self.assertTrue((TMP / "out.mp4").stat().st_size > 0)
 
 
+class CameraTest(unittest.TestCase):
+    """Cámara en vivo, simulada con el video de prueba: a mitad de camino se corta y vuelve."""
+
+    def test_fuente(self):
+        from app.camera import mask_source, parse_source
+        self.assertEqual(parse_source("0"), 0)
+        self.assertEqual(parse_source(" rtsp://cam/1 "), "rtsp://cam/1")
+        self.assertEqual(mask_source("rtsp://admin:clave123@192.168.1.50:554/s1"), "rtsp://***@192.168.1.50:554/s1")
+
+    def test_camara_que_no_responde(self):
+        class Muerta:
+            def __init__(self, src): pass
+            def isOpened(self): return False
+            def release(self): pass
+        with self.assertRaises(ConnectionError) as ctx:
+            VideoProcessor(detector_kind="motion").process_live("rtsp://u:secreta@cam/1", capture_factory=Muerta)
+        self.assertNotIn("secreta", str(ctx.exception))
+
+    def test_eventos_y_reconexion(self):
+        import cv2
+        video = TMP / "camara.mp4"
+        generate(video, 40)
+        database.init_db()
+        database.reset_events()
+        database.set_pricing(1000, 15, 0, 0)
+        proc = VideoProcessor(detector_kind="motion")
+        real, estado = cv2.VideoCapture(str(video)), {"leidos": 0, "aperturas": 0}
+
+        class CamaraFalsa:
+            """Sirve los cuadros del video; la primera conexión se cae en el cuadro 400."""
+            def __init__(self, src):
+                estado["aperturas"] += 1
+                self.n, self.viva = estado["aperturas"], True
+            def isOpened(self): return self.viva
+            def get(self, prop): return real.get(prop)
+            def release(self): self.viva = False
+            def read(self):
+                if self.n == 1 and estado["leidos"] == 400:
+                    return False, None
+                ok, frame = real.read()
+                if not ok:
+                    proc.stop()  # se terminó la "transmisión"
+                    return False, None
+                estado["leidos"] += 1
+                return True, frame
+
+        events = proc.process_live("rtsp://falsa", capture_factory=CamaraFalsa, retry_seconds=0.01, drop_frames=False)
+        real.release()
+        self.assertEqual([e["tipo_evento"] for e in events],
+                         ["entrada", "entrada", "salida", "entrada", "salida", "salida"])
+        self.assertEqual(proc.reconnects, 1)
+        self.assertEqual(estado["leidos"], 800)
+        self.assertFalse(proc.running or proc.live)
+        self.assertEqual(database.stats()["adentro"], 0)
+
+    def test_linea_desde_la_web(self):
+        from unittest import mock
+        from fastapi.testclient import TestClient
+        from app.main import app
+        database.init_db()
+        client = TestClient(app)
+        cuerpo = {"line": [0.2, 0.9, 0.8, 0.1], "entry_direction": "up"}
+        with mock.patch.object(config, "CAMERA", ""):
+            self.assertEqual(client.post("/api/linea", json=cuerpo).status_code, 409)
+        with mock.patch.object(config, "CAMERA", "rtsp://u:secreta@cam/1"):
+            r = client.post("/api/linea", json=cuerpo)
+            self.assertEqual(r.json(), {"line": [0.2, 0.9, 0.8, 0.1], "entry_direction": "up"})
+            self.assertEqual(database.get_camera_line()["line"], (0.2, 0.9, 0.8, 0.1))
+            self.assertEqual(client.post("/api/linea", json={"line": [0.5, 0.5, 0.51, 0.5]}).status_code, 422)
+            self.assertEqual(client.post("/api/linea", json={"line": [0.5, 0.5, 1.5, 0.5]}).status_code, 422)
+            estado = client.get("/api/estado").json()
+            self.assertEqual(estado["videos"][0]["nombre"], "camara")
+            self.assertNotIn("secreta", str(estado))  # la clave de la cámara no sale por la API
+            self.assertEqual(estado["linea_camara"]["entry_direction"], "up")
+
+
 class VideoSettingsTest(unittest.TestCase):
     def test_json_al_lado_del_video(self):
         video = TMP / "cam.mp4"
