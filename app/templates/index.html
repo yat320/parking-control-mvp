@@ -50,17 +50,20 @@
       <form id="form-tarifa">
         <label>Precio por hora <input type="number" id="tarifa-hora" min="0" step="any" required></label>
         <label>Fracción (min) <input type="number" id="fraccion" min="1" max="1440" required></label>
+        <label>Tolerancia sin cargo (min) <input type="number" id="tolerancia" min="0" max="1440" required></label>
+        <label>Tope por día <input type="number" id="tope" min="0" step="any" required></label>
         <button type="submit">Guardar tarifa</button>
         <span id="tarifa-ok" class="ok"></span>
       </form>
-      <p class="meta">Se cobra cada fracción iniciada (mínimo una). Aplica a las salidas que se registren desde ahora.</p>
+      <p class="meta">Se cobra cada fracción iniciada (mínimo una). Tolerancia y tope en 0 quedan desactivados.
+        Aplica a las salidas que se registren desde ahora.</p>
       <h2>Demo</h2>
       <button id="btn-reset" class="peligro">Resetear demo</button>
       <p class="meta">Borra todos los eventos y cierra la barrera. La tarifa se mantiene.</p>
     </section>
 
     <section class="card ancho">
-      <h2>Últimos eventos</h2>
+      <h2>Últimos eventos <a class="descarga" href="/api/eventos.csv">Descargar todo (CSV)</a></h2>
       <div class="tabla">
         <table>
           <thead><tr><th>#</th><th>Tipo</th><th>Hora</th><th>Vehículo</th><th>Track</th><th>Barrera</th><th>Estadía</th><th>Monto</th></tr></thead>

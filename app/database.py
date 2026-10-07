@@ -10,7 +10,7 @@ Tabla `eventos`: una fila por cada cruce de la línea virtual.
   - monto / duracion_seg: solo en las salidas
   - entrada_id: en una salida, el id de la entrada que cierra
 
-Tabla `config`: clave/valor (tarifa por hora y fracción).
+Tabla `config`: clave/valor (tarifa por hora, fracción, tolerancia y tope diario).
 
 Cada función abre su propia conexión: el procesador de video corre en otro
 hilo y SQLite no comparte conexiones entre hilos.
@@ -58,6 +58,8 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
         conn.execute("INSERT OR IGNORE INTO config VALUES ('tarifa_hora', ?)", (str(config.DEFAULT_RATE_PER_HOUR),))
         conn.execute("INSERT OR IGNORE INTO config VALUES ('fraccion_min', ?)", (str(config.DEFAULT_FRACTION_MINUTES),))
+        conn.execute("INSERT OR IGNORE INTO config VALUES ('tolerancia_min', ?)", (str(config.DEFAULT_TOLERANCE_MINUTES),))
+        conn.execute("INSERT OR IGNORE INTO config VALUES ('tope_diario', ?)", (str(config.DEFAULT_DAILY_CAP),))
 
 
 # ---------- configuración ----------
@@ -68,13 +70,21 @@ def get_pricing() -> dict:
     return {
         "tarifa_hora": float(rows.get("tarifa_hora", config.DEFAULT_RATE_PER_HOUR)),
         "fraccion_min": int(float(rows.get("fraccion_min", config.DEFAULT_FRACTION_MINUTES))),
+        "tolerancia_min": int(float(rows.get("tolerancia_min", config.DEFAULT_TOLERANCE_MINUTES))),
+        "tope_diario": float(rows.get("tope_diario", config.DEFAULT_DAILY_CAP)),
     }
 
 
-def set_pricing(tarifa_hora: float, fraccion_min: int) -> None:
+def set_pricing(tarifa_hora: float, fraccion_min: int,
+                tolerancia_min: int | None = None, tope_diario: float | None = None) -> None:
+    """Guarda la tarifa. Tolerancia y tope en None quedan como estaban."""
     with connect() as conn:
         conn.execute("INSERT OR REPLACE INTO config VALUES ('tarifa_hora', ?)", (str(float(tarifa_hora)),))
         conn.execute("INSERT OR REPLACE INTO config VALUES ('fraccion_min', ?)", (str(int(fraccion_min)),))
+        if tolerancia_min is not None:
+            conn.execute("INSERT OR REPLACE INTO config VALUES ('tolerancia_min', ?)", (str(int(tolerancia_min)),))
+        if tope_diario is not None:
+            conn.execute("INSERT OR REPLACE INTO config VALUES ('tope_diario', ?)", (str(float(tope_diario)),))
 
 
 # ---------- eventos ----------
@@ -107,7 +117,8 @@ def register_exit(ts: datetime, tracking_id: int, barrier_state: str) -> dict:
             entrada_id = entry["id"]
             vehicle_id = entry["vehicle_id"]
             duracion = max(0.0, (ts - datetime.fromisoformat(entry["timestamp"])).total_seconds())
-            monto = calculate_amount(duracion, pricing["tarifa_hora"], pricing["fraccion_min"])
+            monto = calculate_amount(duracion, pricing["tarifa_hora"], pricing["fraccion_min"],
+                                     pricing["tolerancia_min"], pricing["tope_diario"])
         cur = conn.execute(
             """INSERT INTO eventos (tipo_evento, timestamp, vehicle_id, tracking_id, estado_barrera,
                                     monto, duracion_seg, entrada_id)
@@ -121,6 +132,13 @@ def register_exit(ts: datetime, tracking_id: int, barrier_state: str) -> dict:
 def list_events(limit: int = 50) -> list[dict]:
     with connect() as conn:
         rows = conn.execute("SELECT * FROM eventos ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def all_events() -> list[dict]:
+    """Todos los eventos, del más viejo al más nuevo (para exportar)."""
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM eventos ORDER BY id").fetchall()
     return [dict(r) for r in rows]
 
 

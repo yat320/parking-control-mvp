@@ -9,10 +9,13 @@ Rutas:
   GET  /api/eventos       últimos eventos (?limit=50)
   POST /api/procesar      arranca a procesar el video (en un hilo aparte)
   POST /api/detener       corta el procesamiento
-  POST /api/tarifa        {"tarifa_hora": 1000, "fraccion_min": 15}
+  GET  /api/eventos.csv   todos los eventos en CSV (se abre con Excel)
+  POST /api/tarifa        {"tarifa_hora": 1000, "fraccion_min": 15, "tolerancia_min": 0, "tope_diario": 0}
   POST /api/barrera/abrir apertura manual (como el botón de la cabina)
   POST /api/reset         borra los eventos y cierra la barrera
 """
+import csv
+import io
 import json
 import threading
 from contextlib import asynccontextmanager
@@ -21,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -148,6 +151,27 @@ def eventos(limit: int = 50):
     return database.list_events(min(max(limit, 1), 500))
 
 
+CSV_COLUMNS = ["id", "tipo_evento", "timestamp", "vehicle_id", "tracking_id",
+               "estado_barrera", "duracion_seg", "monto", "entrada_id"]
+
+
+@app.get("/api/eventos.csv")
+def eventos_csv():
+    """Todos los eventos para planilla. Con ; y BOM, que es como lo abre Excel en español."""
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+    w.writerow(CSV_COLUMNS)
+    for e in database.all_events():
+        row = [e[c] for c in CSV_COLUMNS]
+        for i in (6, 7):  # coma decimal
+            if row[i] is not None:
+                row[i] = f"{row[i]:.2f}".replace(".", ",")
+        w.writerow(["" if v is None else v for v in row])
+    nombre = f"eventos_{datetime.now():%Y-%m-%d}.csv"
+    return Response("\ufeff" + buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{nombre}"'})
+
+
 class ProcesarIn(BaseModel):
     guardar_video: bool = True
     video: str | None = None  # nombre de un archivo de videos/ (por defecto, video_test.mp4)
@@ -178,11 +202,13 @@ def detener():
 class TarifaIn(BaseModel):
     tarifa_hora: float = Field(ge=0)
     fraccion_min: int = Field(default=15, ge=1, le=1440)
+    tolerancia_min: int | None = Field(default=None, ge=0, le=1440)  # None = no cambiar
+    tope_diario: float | None = Field(default=None, ge=0)            # 0 = sin tope
 
 
 @app.post("/api/tarifa")
 def tarifa(body: TarifaIn):
-    database.set_pricing(body.tarifa_hora, body.fraccion_min)
+    database.set_pricing(body.tarifa_hora, body.fraccion_min, body.tolerancia_min, body.tope_diario)
     return database.get_pricing()
 
 

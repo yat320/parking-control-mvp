@@ -143,7 +143,8 @@ En la web se ve:
 - el estado de la barrera arriba a la derecha,
 - entradas, salidas, autos adentro y total recaudado,
 - la tabla de últimos eventos (hora, vehículo, tracking, barrera, estadía, monto),
-- el formulario de tarifa (precio por hora y fracción en minutos),
+- el formulario de tarifa (precio por hora, fracción, tolerancia sin cargo y tope por día),
+- **Descargar todo (CSV)** con todos los eventos para planilla,
 - **Resetear demo** (borra los eventos y cierra la barrera; la tarifa se mantiene),
 - **Abrir barrera (manual)**, como el botón de la cabina.
 
@@ -181,6 +182,7 @@ python tools/generate_test_video.py --seconds 60            # regenerar el video
 ### Pruebas
 
 ```bash
+pip install httpx   # solo para las pruebas de la API
 python -m unittest discover tests -v
 ```
 
@@ -202,7 +204,7 @@ video ──> detector ──> tracker ──> ¿cruzó la línea? ──> barre
 | `app/detection.py` | Detectores. `MotionDetector` (sustracción de fondo) y `YoloDetector` (opcional). |
 | `app/tracker.py` | Tracker por centroides: le da un `tracking_id` estable a cada auto. |
 | `app/barrier_controller.py` | Barrera simulada: abierta/cerrada, se cierra sola a los N segundos. |
-| `app/pricing.py` | Tarifa: se cobra por fracción iniciada, mínimo una. |
+| `app/pricing.py` | Tarifa: fracción iniciada (mínimo una), tolerancia sin cargo y tope por día. |
 | `app/database.py` | SQLite: tabla `eventos` y tabla `config` (tarifa). |
 | `app/demo_video.py` | Genera el video sintético de prueba. |
 | `app/config.py` | Configuración por variables de entorno. |
@@ -263,7 +265,7 @@ Tabla `eventos`:
 | `duracion_seg` | estadía en segundos (solo salidas) |
 | `entrada_id` | en una salida, la entrada que cierra |
 
-Tabla `config`: `tarifa_hora` y `fraccion_min`.
+Tabla `config`: `tarifa_hora`, `fraccion_min`, `tolerancia_min` y `tope_diario`.
 
 Para mirarla a mano: `sqlite3 data/parking.db "SELECT * FROM eventos"`.
 
@@ -283,6 +285,7 @@ Todo por variables de entorno (valores por defecto entre paréntesis):
 | `PARKING_MIN_AREA` (`2500`) | área mínima en píxeles para considerar un vehículo |
 | `PARKING_TIME_SCALE` (`60`) | segundos de estadía por segundo de video (1 = real) |
 | `PARKING_RATE` (`1000`) / `PARKING_FRACTION` (`15`) | tarifa inicial (después se cambia en la web) |
+| `PARKING_TOLERANCE` (`0`) / `PARKING_DAILY_CAP` (`0`) | minutos sin cargo y tope por cada 24 h (0 = desactivado) |
 
 Ejemplo con un video propio cuya entrada está a un tercio de la altura y en tiempo real:
 
@@ -314,7 +317,8 @@ ByteTrack (`model.track(...)` de ultralytics): solo tiene que devolver el mismo 
 | GET | `/api/eventos?limit=50` | últimos eventos |
 | POST | `/api/procesar` | `{"guardar_video": true}` arranca el procesamiento |
 | POST | `/api/detener` | corta el procesamiento |
-| POST | `/api/tarifa` | `{"tarifa_hora": 1000, "fraccion_min": 15}` |
+| GET | `/api/eventos.csv` | todos los eventos en CSV (separador `;`, se abre con Excel) |
+| POST | `/api/tarifa` | `{"tarifa_hora": 1000, "fraccion_min": 15, "tolerancia_min": 10, "tope_diario": 8000}` |
 | POST | `/api/barrera/abrir` | apertura manual |
 | POST | `/api/reset` | borra los eventos y cierra la barrera |
 
