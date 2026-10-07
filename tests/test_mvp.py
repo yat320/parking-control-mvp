@@ -23,6 +23,58 @@ class PricingTest(unittest.TestCase):
         self.assertEqual(calculate_amount(3600, 1200, 60), 1200)
         self.assertEqual(calculate_amount(3600, 0, 15), 0)
 
+    def test_tolerancia(self):
+        self.assertEqual(calculate_amount(5 * 60, 1000, 15, tolerance_minutes=10), 0)
+        self.assertEqual(calculate_amount(10 * 60, 1000, 15, tolerance_minutes=10), 0)   # justo en el límite
+        self.assertEqual(calculate_amount(11 * 60, 1000, 15, tolerance_minutes=10), 250)  # se cobra completa
+        self.assertEqual(calculate_amount(5 * 60, 1000, 15, tolerance_minutes=0), 250)    # desactivada
+
+    def test_tope_diario(self):
+        h = 3600
+        self.assertEqual(calculate_amount(2 * h, 1000, 15, daily_cap=5000), 2000)    # no llega al tope
+        self.assertEqual(calculate_amount(10 * h, 1000, 15, daily_cap=5000), 5000)   # topeado
+        self.assertEqual(calculate_amount(24 * h, 1000, 15, daily_cap=5000), 5000)   # un día justo
+        self.assertEqual(calculate_amount(26 * h, 1000, 15, daily_cap=5000), 7000)   # un día + 2 h
+        self.assertEqual(calculate_amount(40 * h, 1000, 15, daily_cap=5000), 10000)  # dos topes
+        self.assertEqual(calculate_amount(10 * h, 1000, 15, daily_cap=0), 10000)     # sin tope
+
+
+class ApiTest(unittest.TestCase):
+    def setUp(self):
+        from datetime import datetime
+        from fastapi.testclient import TestClient
+        from app.main import app
+        database.init_db()
+        database.reset_events()
+        database.set_pricing(1000, 15, 0, 0)
+        self.dt, self.client = datetime, TestClient(app)
+
+    def test_tarifa_guarda_tolerancia_y_tope(self):
+        r = self.client.post("/api/tarifa", json={"tarifa_hora": 1200, "fraccion_min": 30,
+                                                   "tolerancia_min": 10, "tope_diario": 8000})
+        self.assertEqual(r.json(), {"tarifa_hora": 1200.0, "fraccion_min": 30,
+                                    "tolerancia_min": 10, "tope_diario": 8000.0})
+        # El formato viejo (sin los campos nuevos) no los pisa.
+        r = self.client.post("/api/tarifa", json={"tarifa_hora": 1000, "fraccion_min": 15})
+        self.assertEqual((r.json()["tolerancia_min"], r.json()["tope_diario"]), (10, 8000.0))
+        self.assertEqual(self.client.post("/api/tarifa", json={"tarifa_hora": 1, "tolerancia_min": -1}).status_code, 422)
+
+    def test_salida_dentro_de_la_tolerancia_no_cobra(self):
+        database.set_pricing(1000, 15, 10, 0)
+        database.register_entry(self.dt(2026, 1, 1, 10, 0), 1, "abierta")
+        salida = database.register_exit(self.dt(2026, 1, 1, 10, 8), 1, "abierta")
+        self.assertEqual(salida["monto"], 0)
+
+    def test_csv(self):
+        database.register_entry(self.dt(2026, 1, 1, 10, 0), 1, "abierta")
+        database.register_exit(self.dt(2026, 1, 1, 10, 20), 1, "abierta")
+        r = self.client.get("/api/eventos.csv")
+        self.assertIn("attachment", r.headers["content-disposition"])
+        lineas = r.content.decode("utf-8-sig").strip().split("\r\n")
+        self.assertEqual(lineas[0].split(";")[:3], ["id", "tipo_evento", "timestamp"])
+        self.assertEqual(len(lineas), 3)
+        self.assertEqual(lineas[2].split(";")[6:8], ["1200,00", "500,00"])
+
 
 class BarrierTest(unittest.TestCase):
     def test_abre_y_cierra_sola(self):
@@ -56,7 +108,7 @@ class EndToEndTest(unittest.TestCase):
         generate(video, 40)
         database.init_db()
         database.reset_events()
-        database.set_pricing(1000, 15)
+        database.set_pricing(1000, 15, 0, 0)
         events = VideoProcessor(detector_kind="motion", time_scale=60).process(video, TMP / "out.mp4")
         tipos = [e["tipo_evento"] for e in events]
         self.assertEqual(tipos, ["entrada", "entrada", "salida", "entrada", "salida", "salida"])

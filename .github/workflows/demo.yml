@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt httpx  # httpx: lo usan las pruebas de la API
       - name: Bajar el video real
         run: python tools/descargar_video_real.py
       - name: Pruebas (incluye el video real)

@@ -58,6 +58,8 @@ async function refrescar() {
     if (!tarifaCargada) {
       $("tarifa-hora").value = e.tarifa.tarifa_hora;
       $("fraccion").value = e.tarifa.fraccion_min;
+      $("tolerancia").value = e.tarifa.tolerancia_min;
+      $("tope").value = e.tarifa.tope_diario;
       tarifaCargada = true;
     }
     $("eventos").innerHTML = eventos.length ? eventos.map((ev) => `
@@ -96,8 +98,13 @@ $("btn-reset").onclick = async () => {
 };
 $("form-tarifa").onsubmit = async (ev) => {
   ev.preventDefault();
-  const t = await api("/api/tarifa", { tarifa_hora: Number($("tarifa-hora").value), fraccion_min: Number($("fraccion").value) });
-  $("tarifa-ok").textContent = `Guardada: ${money(t.tarifa_hora)}/h, fracción ${t.fraccion_min} min`;
+  const t = await api("/api/tarifa", {
+    tarifa_hora: Number($("tarifa-hora").value), fraccion_min: Number($("fraccion").value),
+    tolerancia_min: Number($("tolerancia").value), tope_diario: Number($("tope").value),
+  });
+  $("tarifa-ok").textContent = `Guardada: ${money(t.tarifa_hora)}/h, fracción ${t.fraccion_min} min`
+    + (t.tolerancia_min ? `, ${t.tolerancia_min} min sin cargo` : "")
+    + (t.tope_diario ? `, tope ${money(t.tope_diario)}/día` : "");
   setTimeout(() => ($("tarifa-ok").textContent = ""), 3000);
 };
 

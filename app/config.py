@@ -40,6 +40,9 @@ TIME_SCALE = float(os.getenv("PARKING_TIME_SCALE", "60"))
 # Tarifa por defecto (se puede cambiar desde la web; queda guardada en SQLite).
 DEFAULT_RATE_PER_HOUR = float(os.getenv("PARKING_RATE", "1000"))
 DEFAULT_FRACTION_MINUTES = int(os.getenv("PARKING_FRACTION", "15"))
+# Minutos sin cargo y tope por cada 24 h. 0 = desactivado.
+DEFAULT_TOLERANCE_MINUTES = int(os.getenv("PARKING_TOLERANCE", "0"))
+DEFAULT_DAILY_CAP = float(os.getenv("PARKING_DAILY_CAP", "0"))
 
 
 def video_settings(video_path: Path, defaults: dict) -> dict:
