@@ -17,6 +17,8 @@ async function api(path, body) {
 }
 
 let tarifaCargada = false;
+let lineaCamara = null;   // línea y sentido guardados de la cámara
+let marcando = null;      // puntos tocados mientras se marca la línea (null = no se está marcando)
 
 async function refrescar() {
   try {
@@ -32,8 +34,13 @@ async function refrescar() {
       $("sin-video").style.display = "none";
       if (!$("feed").getAttribute("src")) $("feed").src = "/video_feed?t=" + Date.now();  // se abrió a mitad de un video
     }
-    $("mensaje").textContent = e.procesando
-      ? (e.detectados ? `AUTO DETECTADO (${e.detectados})` : "procesando…")
+    lineaCamara = e.linea_camara;
+    $("linea-box").hidden = !e.en_vivo;
+    if (!e.en_vivo) marcando = null;
+    $("feed").classList.toggle("marcando", marcando !== null);
+    $("guardar").disabled = !!(e.videos.find((v) => v.nombre === $("video").value) || {}).en_vivo;
+    $("mensaje").textContent = e.sin_senal ? "SIN SEÑAL de la cámara: reintentando…" : e.procesando
+      ? (e.detectados ? `AUTO DETECTADO (${e.detectados})` : (e.en_vivo ? "cámara en vivo" : "procesando…"))
       : (e.hay_video_salida ? "video procesado guardado en output/" : "");
     $("error").textContent = e.error || "";
     $("s-entradas").textContent = e.stats.entradas;
@@ -47,7 +54,7 @@ async function refrescar() {
     const nombres = e.videos.map((v) => v.nombre).join("|");
     if (sel.dataset.lista !== nombres) {  // rearmar solo si cambió la lista
       const elegido = sel.value || e.video;
-      sel.innerHTML = e.videos.map((v) => `<option value="${esc(v.nombre)}">${esc(v.nombre)}</option>`).join("");
+      sel.innerHTML = e.videos.map((v) => `<option value="${esc(v.nombre)}">${esc(v.etiqueta || v.nombre)}</option>`).join("");
       if (e.videos.some((v) => v.nombre === elegido)) sel.value = elegido;
       sel.dataset.lista = nombres;
     }
@@ -87,6 +94,42 @@ $("btn-procesar").onclick = async () => {
   } catch (err) { $("error").textContent = err.message; }
 };
 $("video").onchange = refrescar;
+
+// Línea de la cámara: se tocan dos puntos sobre la imagen. La imagen se muestra
+// con object-fit: contain, así que hay que descontar las franjas negras.
+function puntoRelativo(ev) {
+  const img = $("feed"), r = img.getBoundingClientRect();
+  const k = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight);
+  const w = img.naturalWidth * k, h = img.naturalHeight * k;
+  const x = (ev.clientX - r.left - (r.width - w) / 2) / w, y = (ev.clientY - r.top - (r.height - h) / 2) / h;
+  return x < 0 || x > 1 || y < 0 || y > 1 ? null : [Number(x.toFixed(4)), Number(y.toFixed(4))];
+}
+async function guardarLinea(line, sentido) {
+  try {
+    await api("/api/linea", { line, entry_direction: sentido });
+    $("linea-ayuda").textContent = "Línea guardada. Entrada: cruzar hacia tu derecha, parado en el primer punto mirando al segundo.";
+  } catch (err) { $("linea-ayuda").textContent = err.message; }
+  refrescar();
+}
+$("btn-linea").onclick = () => {
+  marcando = marcando === null ? [] : null;
+  $("linea-ayuda").textContent = marcando ? "Tocá en la imagen el primer punto de la línea." : "";
+  $("feed").classList.toggle("marcando", marcando !== null);
+};
+$("feed").onclick = (ev) => {
+  if (marcando === null || !$("feed").naturalWidth) return;
+  const p = puntoRelativo(ev);
+  if (!p) return;
+  marcando.push(p);
+  if (marcando.length === 1) { $("linea-ayuda").textContent = "Ahora el segundo punto."; return; }
+  const line = [...marcando[0], ...marcando[1]];
+  marcando = null;
+  guardarLinea(line, (lineaCamara && lineaCamara.entry_direction) || "down");
+};
+$("btn-sentido").onclick = () => {
+  if (!lineaCamara) return;
+  guardarLinea(lineaCamara.line, lineaCamara.entry_direction === "down" ? "up" : "down");
+};
 $("btn-detener").onclick = () => api("/api/detener", {}).then(refrescar);
 $("btn-abrir").onclick = () => api("/api/barrera/abrir", {}).then(refrescar).catch((err) => ($("error").textContent = err.message));
 $("btn-reset").onclick = async () => {

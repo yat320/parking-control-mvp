@@ -87,6 +87,22 @@ def set_pricing(tarifa_hora: float, fraccion_min: int,
             conn.execute("INSERT OR REPLACE INTO config VALUES ('tope_diario', ?)", (str(float(tope_diario)),))
 
 
+def get_camera_line() -> dict:
+    """Línea virtual de la cámara en vivo (se marca desde la web). Sin marcar: la de config.py."""
+    with connect() as conn:
+        rows = dict(conn.execute("SELECT clave, valor FROM config WHERE clave LIKE 'camara_%'").fetchall())
+    line = config.LINE
+    if "camara_linea" in rows:
+        line = tuple(float(v) for v in rows["camara_linea"].split(","))
+    return {"line": line, "entry_direction": rows.get("camara_sentido", config.ENTRY_DIRECTION)}
+
+
+def set_camera_line(line, entry_direction: str) -> None:
+    with connect() as conn:
+        conn.execute("INSERT OR REPLACE INTO config VALUES ('camara_linea', ?)", (",".join(f"{v:.4f}" for v in line),))
+        conn.execute("INSERT OR REPLACE INTO config VALUES ('camara_sentido', ?)", (entry_direction,))
+
+
 # ---------- eventos ----------
 
 def register_entry(ts: datetime, tracking_id: int, barrier_state: str) -> dict:

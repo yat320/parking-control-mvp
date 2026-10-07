@@ -45,3 +45,6 @@ th { color:var(--muted); font-weight:500; }
 .tipo-entrada { color:var(--ok); font-weight:600; } .tipo-salida { color:var(--warn); font-weight:600; }
 .vacio { color:var(--muted); text-align:center; }
 h2 .descarga { float:right; font-size:13px; font-weight:normal; }
+.video-box img.marcando { cursor:crosshair; outline:2px solid var(--warn); outline-offset:-2px; }
+[hidden] { display:none !important; }
+#linea-box { margin-top:8px; }

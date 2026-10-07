@@ -4,6 +4,10 @@ Se puede usar de dos formas:
   - desde la web (app/main.py), que lo corre en un hilo y muestra los frames;
   - por consola:  python -m app.video_processor --video videos/video_test.mp4
 
+La fuente puede ser un video grabado (`process`) o una cámara en vivo
+(`process_live`): el recorrido por frame es el mismo, cambia de dónde salen
+los frames y qué reloj se usa (el del video o el de la PC).
+
 Flujo por frame:
   1. el detector devuelve cajas de vehículos (MotionDetector o YoloDetector),
   2. el tracker les asigna un tracking_id estable,
@@ -23,6 +27,7 @@ import numpy as np
 
 from . import config, database
 from .barrier_controller import OPEN, BarrierController
+from .camera import FrameReader, mask_source
 from .demo_video import generate as generate_demo_video
 from .detection import create_detector
 from .pricing import format_duration
@@ -68,10 +73,126 @@ class VideoProcessor:
         self.detected_now = 0
         self._stop = threading.Event()
 
+        # Cámara en vivo.
+        self.live = False            # se está leyendo una cámara (no un archivo)
+        self.signal = True           # la cámara está respondiendo
+        self.reconnects = 0          # veces que volvió la señal después de un corte
+        self._new_line = None        # (línea, sentido) marcados desde la web, a aplicar en el próximo frame
+
     # ---------- API ----------
 
     def stop(self) -> None:
         self._stop.set()
+
+    def set_line(self, line, entry_direction: str) -> None:
+        """Cambia la línea virtual de la cámara sin cortar el procesamiento."""
+        self._new_line = (tuple(float(v) for v in line), 1 if entry_direction == "down" else -1)
+
+    def process_live(self, source, capture_factory=cv2.VideoCapture,
+                     retry_seconds: float = config.CAMERA_RETRY_SECONDS, drop_frames: bool = True,
+                     line=None, entry_direction: str | None = None) -> list[dict]:
+        """Procesa una cámara en vivo hasta que llamen a stop(). Devuelve los eventos.
+
+        Diferencias con un video grabado: la hora de cada evento es la de la PC
+        (sin escala de tiempo), no hay "progreso" ni video de salida, y si la
+        cámara se corta se espera a que vuelva en vez de terminar.
+        """
+        line_rel = tuple(line) if line else self.line_rel
+        entry_sign = self.entry_sign if entry_direction is None else (1 if entry_direction == "down" else -1)
+        self._new_line = None
+        self._stop.clear()
+        reader = FrameReader(source, capture_factory, retry_seconds, drop_frames).start()
+        w, h = reader.size
+        if w <= 0 or h <= 0:  # algunas cámaras no informan el tamaño hasta el primer frame
+            first = reader.get(timeout=10)
+            if first is None:
+                reader.stop()
+                raise ConnectionError(f"La cámara conectó pero no manda imagen: {mask_source(source)}")
+            h, w = first.shape[:2]
+
+        def to_px(rel):
+            return (int(rel[0] * w), int(rel[1] * h)), (int(rel[2] * w), int(rel[3] * h))
+
+        a, b = to_px(line_rel)
+        scale = max(1.0, DISPLAY_MIN_WIDTH / w)
+        out_size = (round(w * scale), round(h * scale))
+        detector = create_detector(self.detector_kind, self.min_area)
+        tracker = CentroidTracker(max_distance=max(w, h) * 0.2)
+        self.barrier.reset()
+        events, message, message_until = [], "", -1.0
+        self.running, self.live, self.signal, self.reconnects, self.progress = True, True, True, 0, 0.0
+        t0 = time.monotonic()
+        print(f"[CAMARA] {mask_source(source)} {w}x{h}, detector={detector.name}, línea={line_rel}", flush=True)
+
+        try:
+            while not self._stop.is_set():
+                frame = reader.get(timeout=0.5)
+                self.signal, self.reconnects = reader.connected, reader.reconnects
+                now = time.monotonic() - t0
+                if frame is None:
+                    self.barrier.update(now)  # que la barrera no quede abierta durante un corte
+                    continue
+                if self._new_line:
+                    (line_rel, entry_sign), self._new_line = self._new_line, None
+                    a, b = to_px(line_rel)
+                    for tr in tracker.tracks.values():
+                        tr.side = 0  # con la línea nueva nadie "cruzó" todavía
+                detections = detector.detect(frame)
+                tracks = tracker.update(detections)
+                self.barrier.update(now)
+                for kind, tr in self._crossings(tracks, a, b, entry_sign):
+                    ev, message = self._register(kind, tr, now, datetime.now())
+                    message_until = now + MESSAGE_SECONDS
+                    events.append(ev)
+                shown_msg = message if now < message_until else ""
+                view = cv2.resize(frame, out_size, interpolation=cv2.INTER_CUBIC) if scale > 1 else frame
+                self._draw(view, tracks, a, b, now, shown_msg, scale)
+                with self.lock:
+                    self.latest_jpeg = cv2.imencode(".jpg", view, [cv2.IMWRITE_JPEG_QUALITY, 80])[1].tobytes()
+                    self.detected_now = sum(1 for t in tracks.values() if not t.missed)
+                    if shown_msg:
+                        self.last_message = shown_msg
+        finally:
+            reader.stop()
+            self.barrier.reset()
+            self.running, self.live, self.signal = False, False, True
+        print(f"[CAMARA] fin: {len(events)} eventos, {self.reconnects} reconexiones", flush=True)
+        return events
+
+    def _crossings(self, tracks, a, b, entry_sign):
+        """Tracks que en este frame cruzaron la línea: [(tipo, track)]."""
+        out = []
+        for tr in tracks.values():
+            if tr.missed:
+                continue
+            side = side_of_line(tr.centroid, a, b)
+            if side == 0:
+                continue
+            prev, tr.side = tr.side, side
+            # Cruce: el lado cambió y el vehículo es "válido" (visto varios frames).
+            if prev != 0 and prev != side and tr.seen >= MIN_SEEN_FRAMES:
+                kind = "entrada" if side == entry_sign else "salida"
+                if kind not in tr.counted:
+                    tr.counted.add(kind)
+                    out.append((kind, tr))
+        return out
+
+    def _register(self, kind: str, tr, t: float, ts: datetime) -> tuple[dict, str]:
+        """Abre la barrera, guarda el evento y devuelve (evento, mensaje para la pantalla)."""
+        # La barrera se abre ANTES de registrar, así el evento guarda "abierta".
+        self.barrier.open(t, reason=f"{kind} track {tr.id}")
+        if kind == "entrada":
+            ev = database.register_entry(ts, tr.id, self.barrier.state)
+            message = f"EVENTO REGISTRADO: ENTRADA {ev['vehicle_id']}"
+        else:
+            ev = database.register_exit(ts, tr.id, self.barrier.state)
+            extra = ""
+            if ev["monto"] is not None:
+                extra = f" {format_duration(ev['duracion_seg'])} ${ev['monto']:.0f}"
+            message = f"EVENTO REGISTRADO: SALIDA {ev['vehicle_id']}{extra}"
+        ev["video_seg"] = round(t, 2)
+        print(f"[EVENTO] t={t:6.2f}s {message}", flush=True)
+        return ev, message
 
     def process(self, video_path: Path, output_path: Path | None = None, realtime: bool = False,
                 show: bool = False) -> list[dict]:
@@ -125,35 +246,11 @@ class VideoProcessor:
                 tracks = tracker.update(detections)
                 self.barrier.update(video_t)
 
-                for tr in tracks.values():
-                    if tr.missed:
-                        continue
-                    side = side_of_line(tr.centroid, a, b)
-                    if side == 0:
-                        continue
-                    prev, tr.side = tr.side, side
-                    # Cruce: el lado cambió y el vehículo es "válido" (visto varios frames).
-                    if prev != 0 and prev != side and tr.seen >= MIN_SEEN_FRAMES:
-                        kind = "entrada" if side == entry_sign else "salida"
-                        if kind in tr.counted:
-                            continue
-                        tr.counted.add(kind)
-                        # La barrera se abre ANTES de registrar, así el evento guarda "abierta".
-                        self.barrier.open(video_t, reason=f"{kind} track {tr.id}")
-                        ts = start_wall + timedelta(seconds=video_t * self.time_scale)
-                        if kind == "entrada":
-                            ev = database.register_entry(ts, tr.id, self.barrier.state)
-                            message = f"EVENTO REGISTRADO: ENTRADA {ev['vehicle_id']}"
-                        else:
-                            ev = database.register_exit(ts, tr.id, self.barrier.state)
-                            extra = ""
-                            if ev["monto"] is not None:
-                                extra = f" {format_duration(ev['duracion_seg'])} ${ev['monto']:.0f}"
-                            message = f"EVENTO REGISTRADO: SALIDA {ev['vehicle_id']}{extra}"
-                        message_until = video_t + MESSAGE_SECONDS
-                        ev["video_seg"] = round(video_t, 2)
-                        events.append(ev)
-                        print(f"[EVENTO] t={video_t:6.2f}s {message}", flush=True)
+                for kind, tr in self._crossings(tracks, a, b, entry_sign):
+                    ts = start_wall + timedelta(seconds=video_t * self.time_scale)
+                    ev, message = self._register(kind, tr, video_t, ts)
+                    message_until = video_t + MESSAGE_SECONDS
+                    events.append(ev)
 
                 shown_msg = message if video_t < message_until else ""
                 view = cv2.resize(frame, out_size, interpolation=cv2.INTER_CUBIC) if scale > 1 else frame
@@ -256,9 +353,23 @@ def main() -> None:
     parser.add_argument("--realtime", action="store_true", help="procesar a la velocidad del video")
     parser.add_argument("--show", action="store_true", help="mostrar ventana (requiere opencv-python, no headless)")
     parser.add_argument("--reset", action="store_true", help="borrar los eventos antes de empezar")
+    parser.add_argument("--camera", nargs="?", const=config.CAMERA, default=None, metavar="FUENTE",
+                        help="cámara en vivo: URL RTSP o número de webcam (sin valor usa PARKING_CAMERA). Ctrl+C para cortar")
     args = parser.parse_args()
 
     database.init_db()
+    if args.camera is not None:
+        if not args.camera:
+            parser.error("falta la cámara: --camera rtsp://... o la variable PARKING_CAMERA")
+        if args.reset:
+            database.reset_events()
+        proc = VideoProcessor(detector_kind=args.detector)
+        linea = database.get_camera_line()
+        try:
+            proc.process_live(args.camera, line=linea["line"], entry_direction=linea["entry_direction"])
+        except KeyboardInterrupt:
+            proc.stop()
+        return
     if not args.video.exists() and args.video == config.VIDEO_PATH:
         print(f"No existe {args.video}: genero el video de prueba.")
         generate_demo_video(args.video, 40)

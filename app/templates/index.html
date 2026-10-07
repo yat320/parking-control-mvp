@@ -27,6 +27,11 @@
         <button id="btn-abrir">Abrir barrera (manual)</button>
         <label><input type="checkbox" id="guardar" checked> Guardar video procesado</label>
       </div>
+      <div class="acciones" id="linea-box" hidden>
+        <button id="btn-linea">Marcar línea</button>
+        <button id="btn-sentido">Invertir sentido</button>
+        <span id="linea-ayuda" class="meta"></span>
+      </div>
       <p class="meta"><span id="video-desc"></span> Detector: <code>{{ detector }}</code> ·
         escala de tiempo: 1 s de video = {{ time_scale|int }} s de estadía ·
         <span id="mensaje"></span></p>
