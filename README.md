@@ -1,3 +1,14 @@
+---
+title: Parking Control MVP
+emoji: 🚗
+colorFrom: yellow
+colorTo: gray
+sdk: docker
+app_port: 7860
+pinned: false
+short_description: Control de ingreso y egreso de autos con video
+---
+
 # Parking Control MVP
 
 Sistema inicial para controlar el ingreso y egreso de autos en una cochera a partir de video:
@@ -6,6 +17,30 @@ barrera, calcula la estadía y el monto, guarda todo en SQLite y lo muestra en u
 
 Fuera de alcance en esta etapa: lectura de patentes (OCR), pagos reales y hardware real
 (la barrera está simulada, con un punto de enganche para conectarla después).
+
+## Usarlo online con un link fijo (Hugging Face)
+
+La app se publica en [Hugging Face Spaces](https://huggingface.co/spaces): un link que se abre
+desde la PC o el celular, sin Codespace ni terminal. Se configura una sola vez:
+
+1. Creá una cuenta gratis en https://huggingface.co/join.
+2. Entrá a https://huggingface.co/settings/tokens → **Create new token** → tipo **Write** →
+   nombre `github` → **Create token**, y copiá el token (empieza con `hf_`).
+3. En GitHub, en este repo: **Settings → Secrets and variables → Actions → New repository
+   secret**. Nombre: `HF_TOKEN`; valor: el token. **Add secret**.
+4. **Actions → Publicar en Hugging Face → Run workflow**. Al terminar, el resumen de la corrida
+   muestra el link de la app (`https://<tu-usuario>-parking-control-mvp.hf.space`). La primera vez
+   tarda unos minutos en armarse.
+
+Desde ahí, cada cambio que se sube a `main` se publica solo. El Space se crea **privado**: para
+verlo tenés que estar logueado en Hugging Face; para mostrárselo a otros, en el Space →
+**Settings → Change visibility**. En el plan gratis la app se duerme si nadie la usa por un
+tiempo, y la primera visita tarda un minuto en despertar. Los eventos se guardan mientras la app
+está despierta: al dormirse o reiniciarse, la base arranca vacía. Todos los que abren el link ven
+la misma barrera y los mismos eventos.
+
+La imagen es el `Dockerfile` de este repo; sirve también para cualquier servicio que corra
+contenedores (`docker build -t parking . && docker run -p 7860:7860 parking`).
 
 ## Usarlo desde GitHub, sin instalar nada
 

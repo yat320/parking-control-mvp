@@ -1,0 +1,58 @@
+# Publica la app en Hugging Face Spaces en cada push a main (o a mano desde
+# Actions → "Publicar en Hugging Face" → Run workflow).
+#
+# Requiere un secreto del repo llamado HF_TOKEN: un token de Hugging Face con
+# permiso de escritura (huggingface.co/settings/tokens). Sin ese secreto, el
+# workflow no hace nada. El Space se crea solo la primera vez, como privado,
+# con el nombre parking-control-mvp en tu cuenta de Hugging Face.
+name: Publicar en Hugging Face
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      SPACE_NAME: parking-control-mvp
+    steps:
+      - name: Falta el token
+        if: env.HF_TOKEN == ''
+        run: echo "::notice::Falta el secreto HF_TOKEN; no se publica en Hugging Face (ver README)."
+      - uses: actions/checkout@v4
+        if: env.HF_TOKEN != ''
+      - uses: actions/setup-python@v5
+        if: env.HF_TOKEN != ''
+        with:
+          python-version: "3.11"
+      - name: Subir al Space
+        if: env.HF_TOKEN != ''
+        run: |
+          pip install -q huggingface_hub
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          user = api.whoami()["name"]
+          repo = f"{user}/{os.environ['SPACE_NAME']}"
+          # exist_ok: la primera vez lo crea (privado), después lo reutiliza.
+          api.create_repo(repo, repo_type="space", space_sdk="docker", private=True, exist_ok=True)
+          api.upload_folder(
+              folder_path=".", repo_id=repo, repo_type="space",
+              commit_message=f"Desde GitHub {os.environ['GITHUB_SHA'][:7]}",
+              ignore_patterns=[".git/*", ".github/*", ".devcontainer/*", "**/__pycache__/*",
+                               "data/*.db", "output/*.mp4", "videos/*.mp4", "videos/*.avi"],
+          )
+          host = f"{user}-{os.environ['SPACE_NAME']}".lower().replace("_", "-").replace(".", "-")
+          summary = (f"### Publicado en Hugging Face\n\n"
+                     f"- App: https://{host}.hf.space\n"
+                     f"- Space: https://huggingface.co/spaces/{repo}\n\n"
+                     f"La primera vez tarda unos minutos en armarse (pestaña **Logs** del Space).\n")
+          print(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(summary)
+          PY

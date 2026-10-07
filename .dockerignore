@@ -1,0 +1,10 @@
+.git
+.github
+.devcontainer
+**/__pycache__
+data/*.db
+output/*.mp4
+output/*.txt
+videos/*.mp4
+videos/*.avi
+videos/calle_real.json
