@@ -18,30 +18,32 @@ barrera, calcula la estadía y el monto, guarda todo en SQLite y lo muestra en u
 Fuera de alcance en esta etapa: lectura de patentes (OCR), pagos reales y hardware real
 (la barrera está simulada, con un punto de enganche para conectarla después).
 
-## Usarlo online con un link fijo (Hugging Face)
+## Usarlo online con un link fijo (Render)
 
-La app se publica en [Hugging Face Spaces](https://huggingface.co/spaces): un link que se abre
-desde la PC o el celular, sin Codespace ni terminal. Se configura una sola vez:
+La app se publica en [Render](https://render.com), gratis: un link que se abre desde la PC o el
+celular, sin Codespace ni terminal. Se configura una sola vez:
 
-1. Creá una cuenta gratis en https://huggingface.co/join.
-2. Entrá a https://huggingface.co/settings/tokens → **Create new token** → tipo **Write** →
-   nombre `github` → **Create token**, y copiá el token (empieza con `hf_`).
-3. En GitHub, en este repo: **Settings → Secrets and variables → Actions → New repository
-   secret**. Nombre: `HF_TOKEN`; valor: el token. **Add secret**.
-4. **Actions → Publicar en Hugging Face → Run workflow**. Al terminar, el resumen de la corrida
-   muestra el link de la app (`https://<tu-usuario>-parking-control-mvp.hf.space`). La primera vez
-   tarda unos minutos en armarse.
+1. Entrá a https://dashboard.render.com/register y registrate con **GitHub**.
+2. **New → Blueprint** → conectá GitHub si lo pide y elegí este repo (`parking-control-mvp`).
+3. Render lee `render.yaml` (plan **Free**, sin tarjeta) → **Deploy Blueprint**.
+4. La primera vez tarda unos minutos en armarse. Al terminar, el link de la app aparece arriba
+   en el servicio: `https://parking-control-mvp.onrender.com` (o parecido, si el nombre ya
+   estaba tomado).
 
-Desde ahí, cada cambio que se sube a `main` se publica solo. El Space se crea **público**:
-cualquiera con el link lo abre, sin cuenta. Para hacerlo privado: en el Space → **Settings →
-Change visibility**. La versión publicada trae solo el video de prueba (el de la calle real no
-declara licencia). En el plan gratis la app se duerme si nadie la usa por un
-tiempo, y la primera visita tarda un minuto en despertar. Los eventos se guardan mientras la app
-está despierta: al dormirse o reiniciarse, la base arranca vacía. Todos los que abren el link ven
-la misma barrera y los mismos eventos.
+Desde ahí, cada cambio que se sube a `main` se publica solo. Cualquiera con el link lo abre, sin
+cuenta. La versión publicada trae solo el video de prueba (el de la calle real no declara
+licencia). En el plan gratis la app se duerme si nadie la usa por 15 minutos, y la primera visita
+tarda un minuto en despertar. Los eventos se guardan mientras la app está despierta: al dormirse o
+reiniciarse, la base arranca vacía. Todos los que abren el link ven la misma barrera y los mismos
+eventos.
 
 La imagen es el `Dockerfile` de este repo; sirve también para cualquier servicio que corra
-contenedores (`docker build -t parking . && docker run -p 7860:7860 parking`).
+contenedores (`docker build -t parking . && docker run -p 7860:7860 parking`; el puerto se cambia
+con la variable `PORT`).
+
+Hugging Face Spaces también la corre, pero desde octubre de 2026 los Spaces con Docker piden la
+suscripción PRO. Con PRO: secreto `HF_TOKEN` (token de escritura) en **Settings → Secrets and
+variables → Actions**, y **Actions → Publicar en Hugging Face → Run workflow**.
 
 ## Usarlo desde GitHub, sin instalar nada
 

@@ -1,0 +1,9 @@
+# Render: New → Blueprint → este repo. Arma la app gratis desde el Dockerfile y la vuelve a
+# publicar sola con cada cambio en main. En el plan gratis se duerme sin uso y tarda ~1 min en despertar.
+services:
+  - type: web
+    name: parking-control-mvp
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    autoDeploy: true

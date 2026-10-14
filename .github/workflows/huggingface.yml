@@ -1,5 +1,5 @@
-# Publica la app en Hugging Face Spaces en cada push a main (o a mano desde
-# Actions → "Publicar en Hugging Face" → Run workflow).
+# Publica la app en Hugging Face Spaces, a mano desde
+# Actions → "Publicar en Hugging Face" → Run workflow.
 #
 # Requiere un secreto del repo llamado HF_TOKEN: un token de Hugging Face con
 # permiso de escritura (huggingface.co/settings/tokens). Sin ese secreto, el
@@ -7,9 +7,9 @@
 # con el nombre parking-control-mvp en tu cuenta de Hugging Face.
 name: Publicar en Hugging Face
 
+# Desde octubre de 2026 Hugging Face cobra (PRO) los Spaces con Docker: este workflow queda
+# solo a mano, para quien tenga PRO. La app se publica en Render (render.yaml).
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:

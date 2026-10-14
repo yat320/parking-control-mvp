@@ -1,5 +1,5 @@
-# Imagen para Hugging Face Spaces (sdk: docker). También sirve en cualquier
-# servicio que corra contenedores:  docker build -t parking . && docker run -p 7860:7860 parking
+# Imagen para Render (render.yaml) y Hugging Face Spaces (sdk: docker). También sirve en
+# cualquier servicio que corra contenedores:  docker build -t parking . && docker run -p 7860:7860 parking
 FROM python:3.11-slim
 
 # Hugging Face corre los contenedores con el usuario 1000.
@@ -19,4 +19,5 @@ COPY --chown=user . .
 RUN python tools/generate_test_video.py
 
 EXPOSE 7860
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
+# Render (y otros servicios) dicen el puerto en $PORT; sin eso, 7860 como en Hugging Face.
+CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
