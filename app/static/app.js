@@ -85,6 +85,52 @@ $("btn-procesar").onclick = async () => {
   } catch (err) { $("error").textContent = err.message; }
 };
 $("video").onchange = refrescar;
+
+// "Probar con tu video": sube con barra de progreso y arranca a procesarlo.
+$("archivo").onchange = () => { $("subir-msg").textContent = ""; };
+$("form-subir").onsubmit = (ev) => {
+  ev.preventDefault();
+  const archivo = $("archivo").files[0];
+  if (!archivo) return;
+  const datos = new FormData();
+  datos.append("video", archivo);
+  datos.append("orientacion", document.querySelector('input[name="orientacion"]:checked').value);
+  datos.append("invertir", $("invertir").checked ? "true" : "false");
+  const msg = $("subir-msg"), barra = $("subida"), btn = $("btn-subir");
+  btn.disabled = true;
+  msg.textContent = "Subiendo…";
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/subir");
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      barra.style.width = (100 * e.loaded / e.total) + "%";
+      msg.textContent = `Subiendo… ${Math.round(100 * e.loaded / e.total)}%`;
+    }
+  };
+  xhr.onerror = () => { msg.textContent = "Se cortó la subida. Probá de nuevo."; btn.disabled = false; };
+  xhr.onload = async () => {
+    btn.disabled = false;
+    barra.style.width = "0";
+    let r = {};
+    try { r = JSON.parse(xhr.responseText); } catch (e) {}
+    if (xhr.status !== 200) { msg.textContent = r.detail || "No se pudo subir el video."; return; }
+    msg.textContent = "Subido. Procesando… mirá el video de arriba.";
+    $("archivo").value = "";
+    try {
+      await refrescar();
+      $("video").value = r.nombre;
+      $("feed").src = "/video_feed?t=" + Date.now();
+      await api("/api/procesar", { guardar_video: $("guardar").checked, video: r.nombre });
+      $("feed").closest(".video-box").scrollIntoView({ behavior: "smooth", block: "start" });
+      refrescar();
+    } catch (err) {
+      msg.textContent = err.message.startsWith("Ya se está procesando")
+        ? "Tu video quedó en la lista. Cuando termine el que se está procesando, elegilo y tocá Procesar video."
+        : err.message;
+    }
+  };
+  xhr.send(datos);
+};
 $("btn-detener").onclick = () => api("/api/detener", {}).then(refrescar);
 $("btn-abrir").onclick = () => api("/api/barrera/abrir", {}).then(refrescar).catch((err) => ($("error").textContent = err.message));
 $("btn-reset").onclick = async () => {

@@ -38,6 +38,25 @@
         escala de tiempo: 1 s de video = {{ time_scale|int }} s de estadía ·
         <span id="mensaje"></span></p>
       <p id="error" class="error"></p>
+
+      <form id="form-subir" class="subir">
+        <h2>Probar con tu video</h2>
+        <p class="meta">Filmá con el celular quieto una entrada de cochera o una calle, de 20 a 40 segundos.
+          Máximo {{ max_mb }} MB y {{ max_seg }} segundos. Lo que subís lo ven todos los que entran a la demo,
+          y se borra cuando la app se reinicia.</p>
+        <fieldset>
+          <legend>¿Cómo cruzan los autos en tu video?</legend>
+          <label><input type="radio" name="orientacion" id="ori-h" value="horizontal" checked> <span>De arriba hacia abajo <small>(la línea va acostada; bajar es entrada)</small></span></label>
+          <label><input type="radio" name="orientacion" id="ori-v" value="vertical"> <span>De costado <small>(la línea va parada; ir a la derecha es entrada)</small></span></label>
+          <label><input type="checkbox" id="invertir"> <span>Al revés: entrar es subir o ir a la izquierda</span></label>
+        </fieldset>
+        <div class="acciones">
+          <input type="file" id="archivo" accept="video/*" aria-label="Elegí o grabá un video" required>
+          <button type="submit" id="btn-subir" class="primario">Subir y procesar</button>
+        </div>
+        <div class="progress"><div id="subida"></div></div>
+        <p id="subir-msg" class="meta" aria-live="polite"></p>
+      </form>
     </section>
 
     <section class="card">

@@ -90,6 +90,12 @@ class VideoProcessor:
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
         w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        # Los videos grandes (celular en 1080p o 4K) se achican antes de todo: la
+        # detección, el tracking y el dibujo trabajan sobre el frame achicado.
+        shrink = None
+        if config.PROCESS_MAX_WIDTH and w > config.PROCESS_MAX_WIDTH:
+            shrink = (config.PROCESS_MAX_WIDTH, max(1, round(h * config.PROCESS_MAX_WIDTH / w)))
+            w, h = shrink
         a = (int(line_rel[0] * w), int(line_rel[1] * h))
         b = (int(line_rel[2] * w), int(line_rel[3] * h))
         # Los videos chicos (cámaras viejas, 320 px) se agrandan solo para dibujar,
@@ -118,6 +124,8 @@ class VideoProcessor:
                 ok, frame = cap.read()
                 if not ok:
                     break
+                if shrink:
+                    frame = cv2.resize(frame, shrink, interpolation=cv2.INTER_AREA)
                 video_t = frame_idx / fps
                 frame_idx += 1
 

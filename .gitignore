@@ -8,3 +8,5 @@ videos/*.avi
 videos/*.mov
 videos/*.mkv
 videos/calle_real.json
+videos/*.webm
+videos/subido-*.json

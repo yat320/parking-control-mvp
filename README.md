@@ -45,6 +45,23 @@ Hugging Face Spaces también la corre, pero desde octubre de 2026 los Spaces con
 suscripción PRO. Con PRO: secreto `HF_TOKEN` (token de escritura) en **Settings → Secrets and
 variables → Actions**, y **Actions → Publicar en Hugging Face → Run workflow**.
 
+## Probar con tu video
+
+En la web, debajo del video, **Probar con tu video**: desde el celular se elige un video de la
+galería o se graba uno en el momento. Se elige cómo cruzan los autos (de arriba hacia abajo, con
+la línea acostada, o de costado, con la línea parada; y si entrar es al revés) y **Subir y
+procesar**: se sube con barra de progreso y arranca solo.
+
+- Hasta 80 MB y 90 segundos (`PARKING_UPLOAD_MB`, `PARKING_UPLOAD_SECONDS`). Rinde más un video
+  de 20 a 40 segundos con el celular quieto, en una entrada de cochera o una calle.
+- Se guarda en `videos/subido-AAAAMMDD-HHMMSS.<ext>` con su `.json` de línea (ver *Ajustes por
+  video*), y queda en el selector. Solo se guardan los últimos 5 (`PARKING_UPLOAD_KEEP`).
+- Es una demo compartida: lo que se sube lo ven todos los que entran, y en Render se borra
+  cuando la app se reinicia o se duerme.
+- Los videos de más de 640 px de ancho se achican antes de detectar (`PARKING_MAX_WIDTH`), así un
+  video de celular en 1080p no tarda una eternidad en un servidor chico.
+- Si un video de iPhone no se puede leer: Ajustes → Cámara → Formatos → *Más compatible*.
+
 ## Usarlo desde GitHub, sin instalar nada
 
 ### Panel web en un Codespace
@@ -108,7 +125,8 @@ la línea es vertical:
   hacia (x2,y2), pasar hacia tu **derecha** es **entrada**. Con una línea horizontal de izquierda
   a derecha, entrar es cruzar hacia abajo; con una vertical dibujada de abajo hacia arriba,
   entrar es cruzar hacia la derecha. `entry_direction: "up"` lo invierte.
-- `min_area`: área mínima en píxeles del video original (bajala en videos chicos).
+- `min_area`: área mínima en píxeles del video tal como se procesa (los de más de 640 px de ancho
+  se achican primero; bajala en videos chicos).
 
 Con tu propio video: copialo a `videos/`, creale su `.json` con la línea donde está la barrera y
 elegilo en la web. Los videos de menos de 640 px de ancho se agrandan para dibujar, así los
@@ -284,6 +302,9 @@ Todo por variables de entorno (valores por defecto entre paréntesis):
 | `PARKING_ENTRY_DIRECTION` (`down`) | sentido de entrada: `down` o `up` |
 | `PARKING_BARRIER_SECONDS` (`3`) | segundos que queda abierta la barrera |
 | `PARKING_MIN_AREA` (`2500`) | área mínima en píxeles para considerar un vehículo |
+| `PARKING_MAX_WIDTH` (`640`) | ancho máximo: los videos más anchos se achican antes de detectar (0 = no) |
+| `PARKING_UPLOAD_MB` (`80`) / `PARKING_UPLOAD_SECONDS` (`90`) | límites de "Probar con tu video" |
+| `PARKING_UPLOAD_KEEP` (`5`) / `PARKING_UPLOAD_MIN_AREA` (`1500`) | videos subidos que se guardan y su área mínima |
 | `PARKING_TIME_SCALE` (`60`) | segundos de estadía por segundo de video (1 = real) |
 | `PARKING_RATE` (`1000`) / `PARKING_FRACTION` (`15`) | tarifa inicial (después se cambia en la web) |
 
@@ -315,7 +336,8 @@ ByteTrack (`model.track(...)` de ultralytics): solo tiene que devolver el mismo 
 | GET | `/video_feed` | video procesado en vivo (MJPEG) |
 | GET | `/api/estado` | barrera, contadores, autos adentro, tarifa, progreso |
 | GET | `/api/eventos?limit=50` | últimos eventos |
-| POST | `/api/procesar` | `{"guardar_video": true}` arranca el procesamiento |
+| POST | `/api/procesar` | `{"guardar_video": true, "video": "nombre"}` arranca el procesamiento |
+| POST | `/api/subir` | form `video` (archivo), `orientacion` (`horizontal`/`vertical`), `invertir`: sube un video propio |
 | POST | `/api/detener` | corta el procesamiento |
 | POST | `/api/tarifa` | `{"tarifa_hora": 1000, "fraccion_min": 15}` |
 | POST | `/api/barrera/abrir` | apertura manual |

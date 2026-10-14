@@ -47,3 +47,10 @@ th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); 
 th { color:var(--muted); font-weight:500; }
 .tipo-entrada { color:var(--ok); font-weight:600; } .tipo-salida { color:var(--warn); font-weight:600; }
 .vacio { color:var(--muted); text-align:center; }
+.subir { margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
+.subir fieldset { border:1px solid var(--line); border-radius:8px; margin:10px 0; padding:8px 12px; }
+.subir legend { color:var(--muted); font-size:13px; padding:0 4px; }
+.subir fieldset label { display:flex; gap:8px; align-items:flex-start; padding:6px 0; min-height:32px; }
+.subir fieldset small { color:var(--muted); }
+.subir input[type=radio], .subir input[type=checkbox] { width:18px; height:18px; margin-top:2px; flex:none; }
+.subir input[type=file] { max-width:100%; color:var(--muted); }

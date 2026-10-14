@@ -8,6 +8,7 @@ Rutas:
   GET  /api/estado        barrera, contadores, progreso del procesamiento
   GET  /api/eventos       últimos eventos (?limit=50)
   POST /api/procesar      arranca a procesar el video (en un hilo aparte)
+  POST /api/subir         sube un video propio (form: video, orientacion, invertir)
   POST /api/detener       corta el procesamiento
   POST /api/tarifa        {"tarifa_hora": 1000, "fraccion_min": 15}
   POST /api/barrera/abrir apertura manual (como el botón de la cabina)
@@ -20,13 +21,13 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from . import config, database
+from . import config, database, uploads
 from .barrier_controller import BarrierController
 from .demo_video import generate as generate_demo_video
 from .video_processor import VideoProcessor
@@ -55,7 +56,7 @@ _last_error = ""
 _manual_open_t0 = time.monotonic()  # reloj para la apertura manual (fuera del video)
 
 
-VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv"}
+VIDEO_EXTS = uploads.ALLOWED
 _current_video = config.VIDEO_PATH.name
 
 
@@ -97,6 +98,8 @@ def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {
         "detector": config.DETECTOR,
         "time_scale": config.TIME_SCALE,
+        "max_mb": config.UPLOAD_MAX_MB,
+        "max_seg": config.UPLOAD_MAX_SECONDS,
     })
 
 
@@ -167,6 +170,20 @@ def procesar(body: ProcesarIn | None = None):
     _thread = threading.Thread(target=_run_processing, args=(config.VIDEO_PATH.parent / name, save), daemon=True)
     _thread.start()
     return {"ok": True}
+
+
+@app.post("/api/subir")
+def subir(request: Request, video: UploadFile = File(...), orientacion: str = Form("horizontal"),
+          invertir: bool = Form(False)):
+    """Guarda un video propio en videos/ con su línea virtual; después se procesa como cualquiera."""
+    size = int(request.headers.get("content-length") or 0)
+    if size > (config.UPLOAD_MAX_MB + 1) * 1024 * 1024:
+        raise HTTPException(413, f"El video pesa más de {config.UPLOAD_MAX_MB} MB. Grabá uno más corto.")
+    try:
+        name = uploads.save(video.file, video.filename, orientacion, invertir)
+    except uploads.UploadError as e:
+        raise HTTPException(400, str(e))
+    return {"nombre": name}
 
 
 @app.post("/api/detener")

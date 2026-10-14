@@ -37,6 +37,16 @@ MIN_AREA = int(os.getenv("PARKING_MIN_AREA", "2500"))
 # (lo correcto para una cámara real).
 TIME_SCALE = float(os.getenv("PARKING_TIME_SCALE", "60"))
 
+# Los videos más anchos que esto se achican antes de detectar (los de celular vienen en
+# 1080p o 4K y en un servidor chico irían lentísimo). 0 = no achicar.
+PROCESS_MAX_WIDTH = int(os.getenv("PARKING_MAX_WIDTH", "640"))
+
+# "Probar con tu video": límites de lo que se puede subir desde la web.
+UPLOAD_MAX_MB = int(os.getenv("PARKING_UPLOAD_MB", "80"))
+UPLOAD_MAX_SECONDS = int(os.getenv("PARKING_UPLOAD_SECONDS", "90"))
+UPLOAD_KEEP = int(os.getenv("PARKING_UPLOAD_KEEP", "5"))       # se guardan solo los últimos
+UPLOAD_MIN_AREA = int(os.getenv("PARKING_UPLOAD_MIN_AREA", "1500"))  # en el video ya achicado
+
 # Tarifa por defecto (se puede cambiar desde la web; queda guardada en SQLite).
 DEFAULT_RATE_PER_HOUR = float(os.getenv("PARKING_RATE", "1000"))
 DEFAULT_FRACTION_MINUTES = int(os.getenv("PARKING_FRACTION", "15"))

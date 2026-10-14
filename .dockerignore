@@ -8,3 +8,7 @@ output/*.txt
 videos/*.mp4
 videos/*.avi
 videos/calle_real.json
+videos/*.mov
+videos/*.mkv
+videos/*.webm
+videos/subido-*
