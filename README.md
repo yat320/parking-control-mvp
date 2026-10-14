@@ -32,9 +32,10 @@ desde la PC o el celular, sin Codespace ni terminal. Se configura una sola vez:
    muestra el link de la app (`https://<tu-usuario>-parking-control-mvp.hf.space`). La primera vez
    tarda unos minutos en armarse.
 
-Desde ahí, cada cambio que se sube a `main` se publica solo. El Space se crea **privado**: para
-verlo tenés que estar logueado en Hugging Face; para mostrárselo a otros, en el Space →
-**Settings → Change visibility**. En el plan gratis la app se duerme si nadie la usa por un
+Desde ahí, cada cambio que se sube a `main` se publica solo. El Space se crea **público**:
+cualquiera con el link lo abre, sin cuenta. Para hacerlo privado: en el Space → **Settings →
+Change visibility**. La versión publicada trae solo el video de prueba (el de la calle real no
+declara licencia). En el plan gratis la app se duerme si nadie la usa por un
 tiempo, y la primera visita tarda un minuto en despertar. Los eventos se guardan mientras la app
 está despierta: al dormirse o reiniciarse, la base arranca vacía. Todos los que abren el link ven
 la misma barrera y los mismos eventos.

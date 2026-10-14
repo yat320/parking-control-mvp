@@ -13,10 +13,10 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 COPY --chown=user . .
 
-# Los videos se preparan al armar la imagen, así la app arranca al toque.
-# Si no se puede bajar el video real, la app anda igual con el de prueba.
-RUN python tools/generate_test_video.py \
- && (python tools/descargar_video_real.py || echo "No se pudo bajar el video real; queda solo el de prueba.")
+# El video de prueba se genera al armar la imagen, así la app arranca al toque.
+# El video de la calle real (tools/descargar_video_real.py) no va en la versión
+# publicada: su fuente no declara licencia. Se usa solo localmente.
+RUN python tools/generate_test_video.py
 
 EXPOSE 7860
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]

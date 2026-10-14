@@ -3,7 +3,7 @@
 #
 # Requiere un secreto del repo llamado HF_TOKEN: un token de Hugging Face con
 # permiso de escritura (huggingface.co/settings/tokens). Sin ese secreto, el
-# workflow no hace nada. El Space se crea solo la primera vez, como privado,
+# workflow no hace nada. El Space se crea solo la primera vez, como público,
 # con el nombre parking-control-mvp en tu cuenta de Hugging Face.
 name: Publicar en Hugging Face
 
@@ -39,8 +39,9 @@ jobs:
           api = HfApi(token=os.environ["HF_TOKEN"])
           user = api.whoami()["name"]
           repo = f"{user}/{os.environ['SPACE_NAME']}"
-          # exist_ok: la primera vez lo crea (privado), después lo reutiliza.
-          api.create_repo(repo, repo_type="space", space_sdk="docker", private=True, exist_ok=True)
+          # exist_ok: la primera vez lo crea (público, para que lo abra cualquiera
+          # con el link), después lo reutiliza sin tocar la visibilidad.
+          api.create_repo(repo, repo_type="space", space_sdk="docker", private=False, exist_ok=True)
           api.upload_folder(
               folder_path=".", repo_id=repo, repo_type="space",
               commit_message=f"Desde GitHub {os.environ['GITHUB_SHA'][:7]}",
