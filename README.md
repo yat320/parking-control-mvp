@@ -81,8 +81,9 @@ subir el video. Por consola: `python -m app.video_processor --video X.mp4 --pate
   patente leída; nunca con la de otra patente.
 - `python -m app.demo_plates` arma un video de prueba (patentes dibujadas): entran 3 autos y salen
   en otro orden. Sirve para probar el circuito, no para medir cuánto acierta con chapas reales.
-- El detector encuentra mejor las chapas que ocupan alrededor del 10% del ancho de la imagen:
-  la cámara no tiene que estar pegada al auto.
+- Medido con datos reales (ver *Cuánto acierta*, abajo): el detector encontró la chapa en 222 de
+  222 fotos de autos en la calle, y el OCR argentino leyó bien 96,6% de 735 patentes argentinas
+  leyendo una sola vez cada una.
 - Las patentes son datos personales (ley 25.326): en un uso real, cartel de zona filmada y borrar
   los registros viejos.
 
@@ -401,5 +402,5 @@ Documentación interactiva: http://localhost:8000/docs
 2. Cámara en vivo: `cv2.VideoCapture("rtsp://usuario:clave@ip/stream")` en lugar del archivo.
 3. YOLO + ByteTrack para descartar personas y autos quietos.
 4. Probar la lectura de patentes con video real de la cámara frontal y elegir el modelo de OCR
-   (`PARKING_PLATES_OCR`: `cct-xs-v1-global-model` o `argentinian-plates-cnn-model`).
+   (`PARKING_PLATES_OCR`; por defecto `argentinian-plates-cnn-synth-model`).
 5. Barrera real en `_actuate()` y cobro real.

@@ -237,7 +237,8 @@ class PlatesVideoTest(unittest.TestCase):
         import json
         from app.demo_plates import generate as generate_plates
         video = generate_plates(TMP / "frontal.mp4")
-        video.with_suffix(".json").write_text(json.dumps({"patentes": True}))
+        from app.demo_plates import DRAWN_OCR
+        video.with_suffix(".json").write_text(json.dumps({"patentes": True, "ocr": DRAWN_OCR}))
         database.init_db()
         database.reset_events()
         VideoProcessor(detector_kind="motion").process(video)

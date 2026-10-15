@@ -20,7 +20,9 @@ RUN python tools/generate_test_video.py && python -m app.demo_plates --par video
 
 # Los modelos de patentes (unos 10 MB) se bajan al armar la imagen: así la primera
 # lectura no espera la descarga, y la app no depende de GitHub para arrancar.
-RUN python -c "from app import plates; assert plates.create_reader(), 'no se pudieron bajar los modelos'"
+# Dos OCR: el argentino (por defecto) y el global, que piden los videos de prueba con chapas dibujadas.
+RUN python -c "from app import plates, demo_plates; \
+assert plates.create_reader() and plates.create_reader(demo_plates.DRAWN_OCR), 'no se pudieron bajar los modelos'"
 
 EXPOSE 7860
 # Render (y otros servicios) dicen el puerto en $PORT; sin eso, 7860 como en Hugging Face.
