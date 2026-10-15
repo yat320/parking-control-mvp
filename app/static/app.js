@@ -102,6 +102,11 @@ $("form-subir").onsubmit = (ev) => {
   datos.append("orientacion", document.querySelector('input[name="orientacion"]:checked').value);
   datos.append("invertir", $("invertir").checked ? "true" : "false");
   datos.append("patentes", $("patentes").checked ? "true" : "false");
+  const frontal = $("archivo-frontal").files[0];
+  if (frontal) {
+    datos.append("frontal", frontal);
+    datos.append("desfase", String(Number($("desfase").value) || 0));
+  }
   const msg = $("subir-msg"), barra = $("subida"), btn = $("btn-subir");
   btn.disabled = true;
   msg.textContent = "Subiendo…";
@@ -122,6 +127,7 @@ $("form-subir").onsubmit = (ev) => {
     if (xhr.status !== 200) { msg.textContent = r.detail || "No se pudo subir el video."; return; }
     msg.textContent = "Subido. Procesando… mirá el video de arriba.";
     $("archivo").value = "";
+    $("archivo-frontal").value = "";
     try {
       await refrescar();
       $("video").value = r.nombre;

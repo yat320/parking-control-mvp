@@ -56,6 +56,11 @@ PLATES_WINDOW = int(os.getenv("PARKING_PLATES_WINDOW", "6"))       # lecturas re
 PLATES_LATE_SECONDS = float(os.getenv("PARKING_PLATES_LATE", "3"))  # si se lee después de cruzar, hasta cuándo vale
 PLATES_DETECTOR = os.getenv("PARKING_PLATES_DETECTOR", "yolo-v9-t-384-license-plate-end2end")
 PLATES_OCR = os.getenv("PARKING_PLATES_OCR", "cct-xs-v1-global-model")
+# Dos cámaras (la de la barrera cuenta, la frontal lee patentes): cuándo una patente vista
+# por la frontal corresponde a un evento de la barrera.
+PAIR_BEFORE = float(os.getenv("PARKING_PAIR_BEFORE", "5"))   # vista hasta 5 s antes del evento
+PAIR_AFTER = float(os.getenv("PARKING_PAIR_AFTER", "2"))     # o hasta 2 s después
+PAIR_GAP_SECONDS = float(os.getenv("PARKING_PAIR_GAP", "2"))  # lecturas a menos de esto son la misma pasada
 PLATES_DIR = Path(os.getenv("PARKING_PLATES_DIR", BASE_DIR / "data" / "patentes"))  # fotos recortadas
 
 # Tarifa por defecto (se puede cambiar desde la web; queda guardada en SQLite).
@@ -69,8 +74,10 @@ def video_settings(video_path: Path, defaults: dict) -> dict:
     Ejemplo de videos/calle_real.json:
         {"line": [0.5, 0.95, 0.5, 0.05], "entry_direction": "down", "min_area": 300}
     Con "patentes": true, es una cámara frontal y se leen las patentes.
+    Con "frontal": "otro.mp4", ese video es la cámara frontal de este (las patentes se
+    leen ahí) y "desfase": segundos que la frontal empezó a grabar antes (negativo: después).
     Lo que no esté en el archivo queda con el valor de `defaults`
-    (claves: line, entry_sign, min_area, plates).
+    (claves: line, entry_sign, min_area, plates, frontal, offset).
     """
     opts = dict(defaults)
     sidecar = Path(video_path).with_suffix(".json")
@@ -84,4 +91,7 @@ def video_settings(video_path: Path, defaults: dict) -> dict:
             opts["min_area"] = int(data["min_area"])
         if "patentes" in data:
             opts["plates"] = bool(data["patentes"])
+        if data.get("frontal"):
+            opts["frontal"] = sidecar.parent / Path(str(data["frontal"])).name  # siempre en la misma carpeta
+            opts["offset"] = float(data.get("desfase", 0))
     return opts

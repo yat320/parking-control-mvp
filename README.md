@@ -86,6 +86,27 @@ subir el video. Por consola: `python -m app.video_processor --video X.mp4 --pate
 - Las patentes son datos personales (ley 25.326): en un uso real, cartel de zona filmada y borrar
   los registros viejos.
 
+### Dos cámaras: barrera + frontal
+
+Lo normal en una cochera: una cámara arriba de la barrera cuenta las entradas y salidas, y otra
+de frente lee las patentes. La frontal no ve la línea: anota cada patente con la hora en que la
+vio, y cada evento de la barrera se lleva la patente vista entre 5 s antes y 2 s después
+(`PARKING_PAIR_BEFORE`, `PARKING_PAIR_AFTER`), la más cercana en el tiempo, una vez cada una.
+Si la patente llega después de una salida que ya se había emparejado por orden de llegada, la
+salida pasa a la entrada de esa patente y se recalcula el cobro.
+
+- En la web: **Agregar la cámara frontal** al subir, con el **desfase**: segundos que la frontal
+  empezó a grabar antes que la de la barrera (negativo si empezó después). Con el video de prueba,
+  un desfase mal cargado por hasta 2,5 s sigue cobrando bien.
+- En un `.json`: `{"frontal": "frente.mp4", "desfase": 2.5}` al lado del video de la barrera (las
+  dos en la misma carpeta). La frontal no aparece sola en el selector.
+- `python -m app.demo_plates --par videos/ [--desfase 2.5]` arma el par de prueba
+  (`par_barrera.mp4` + `par_frontal.mp4`); la imagen de Docker ya lo trae.
+- El video procesado muestra la frontal en un recuadro, para ver que van sincronizadas.
+
+Con cámaras en vivo es lo mismo con la hora del reloj (sin desfase): está en la rama
+`camara-en-vivo`, que falta juntar con esta.
+
 ## Usarlo desde GitHub, sin instalar nada
 
 ### Panel web en un Codespace
@@ -250,7 +271,8 @@ video ──> detector ──> tracker ──> ¿cruzó la línea? ──> barre
 | `app/pricing.py` | Tarifa: se cobra por fracción iniciada, mínimo una. |
 | `app/database.py` | SQLite: tabla `eventos` (con la patente) y tabla `config` (tarifa). |
 | `app/plates.py` | Patentes: lector (fast-alpr), formato argentino y votos por auto. |
-| `app/demo_plates.py` | Video de prueba de cámara frontal, con patentes dibujadas. |
+| `app/demo_plates.py` | Videos de prueba de cámara frontal, con patentes dibujadas, y el par barrera + frontal. |
+| `app/pairing.py` | Dos cámaras: patentes de la frontal con su hora y a qué evento de la barrera van. |
 | `app/uploads.py` | Videos subidos desde la web: validar, guardar con su línea y recortar. |
 | `app/demo_video.py` | Genera el video sintético de prueba. |
 | `app/config.py` | Configuración por variables de entorno. |

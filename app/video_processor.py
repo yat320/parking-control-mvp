@@ -22,7 +22,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import config, database, plates
+from . import config, database, pairing, plates
 from .barrier_controller import OPEN, BarrierController
 from .demo_video import generate as generate_demo_video
 from .detection import create_detector
@@ -87,12 +87,17 @@ class VideoProcessor:
         """
         opts = config.video_settings(Path(video_path), {
             "line": self.line_rel, "entry_sign": self.entry_sign, "min_area": self.min_area,
-            "plates": config.PLATES})
+            "plates": config.PLATES, "frontal": None, "offset": 0.0})
         line_rel, entry_sign, min_area = opts["line"], opts["entry_sign"], opts["min_area"]
-        reader = plates.create_reader() if opts["plates"] else None
+        want_plates = opts["plates"] or bool(opts["frontal"])
+        reader = plates.create_reader() if want_plates else None
         self.notice = ("No se pueden leer patentes en este servidor: los autos quedan con número."
-                       if opts["plates"] and reader is None else "")
+                       if want_plates and reader is None else "")
         self._plate_boxes = []
+        # Con cámara frontal, las patentes se leen ahí; si no, en este mismo video.
+        frontal = pairing.FrontalFile(opts["frontal"], opts["offset"], reader) if opts["frontal"] and reader else None
+        same_cam = reader if not frontal else None
+        pending_pair = []  # (evento, segundo) registrados sin patente, esperando que la frontal la vea
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             raise FileNotFoundError(f"No se pudo abrir el video: {video_path}")
@@ -126,8 +131,10 @@ class VideoProcessor:
         self._stop.clear()
         self.running = True
         frame_idx, t0 = 0, time.monotonic()
+        cams = f"cámara frontal {Path(opts['frontal']).name} (desfase {opts['offset']:+g} s)" if frontal else \
+            ("sí" if same_cam else "no")
         print(f"[VIDEO] {video_path} {w}x{h} @ {fps:.1f} fps, detector={detector.name}, "
-              f"línea={tuple(line_rel)}, área mínima={min_area}, patentes={'sí' if reader else 'no'}", flush=True)
+              f"línea={tuple(line_rel)}, área mínima={min_area}, patentes={cams}", flush=True)
 
         try:
             while not self._stop.is_set():
@@ -144,12 +151,17 @@ class VideoProcessor:
                 tracks = tracker.update(detections)
                 self.barrier.update(video_t)
 
-                # Cámara frontal: leer patentes cada N frames, solo si hay autos en cuadro.
-                if reader and frame_idx % config.PLATES_EVERY == 0 and any(not t.missed for t in tracks.values()):
-                    reads = reader.read(original)
+                # Una sola cámara que también ve las patentes: leerlas cada N frames, si hay autos.
+                if same_cam and frame_idx % config.PLATES_EVERY == 0 and any(not t.missed for t in tracks.values()):
+                    reads = same_cam.read(original)
                     plates.assign(reads, tracks, plate_scale)
                     self._plate_boxes = [(tuple(int(v * plate_scale) for v in r.box), r.text) for r in reads]
                     self._fill_late_plates(tracks, video_t)
+
+                # Dos cámaras: la frontal avanza a la par y anota las patentes que ve.
+                if frontal:
+                    frontal.advance(video_t)
+                    pending_pair = self._fill_pair_plates(frontal.timeline, pending_pair, video_t)
 
                 for tr in tracks.values():
                     if tr.missed:
@@ -167,7 +179,14 @@ class VideoProcessor:
                         # La barrera se abre ANTES de registrar, así el evento guarda "abierta".
                         self.barrier.open(video_t, reason=f"{kind} track {tr.id}")
                         ts = start_wall + timedelta(seconds=video_t * self.time_scale)
-                        plate = tr.plates.best() if reader else None
+                        plate, crop = None, None
+                        if frontal:
+                            seen = frontal.timeline.claim(video_t)
+                            if seen:
+                                plate, crop = seen.plate, seen.crop
+                        elif same_cam:
+                            plate = tr.plates.best()
+                            crop = tr.plates.crop(plate) if plate else None
                         who = plates.pretty(plate) if plate else None
                         if kind == "entrada":
                             ev = database.register_entry(ts, tr.id, self.barrier.state, plate)
@@ -179,8 +198,10 @@ class VideoProcessor:
                                 extra = f" {format_duration(ev['duracion_seg'])} ${ev['monto']:.0f}"
                             message = f"EVENTO REGISTRADO: SALIDA {who or ev['vehicle_id']}{extra}"
                         if plate:
-                            save_plate_photo(ev["id"], tr.plates.crop(plate))
-                        elif reader:
+                            save_plate_photo(ev["id"], crop)
+                        elif frontal:
+                            pending_pair.append((ev["id"], video_t))      # la frontal la puede ver enseguida
+                        elif same_cam:
                             tr.pending_plate.append((ev["id"], video_t))  # se completa si se lee enseguida
                         message_until = video_t + MESSAGE_SECONDS
                         ev["video_seg"] = round(video_t, 2)
@@ -190,6 +211,8 @@ class VideoProcessor:
                 shown_msg = message if video_t < message_until else ""
                 view = cv2.resize(frame, out_size, interpolation=cv2.INTER_CUBIC) if scale > 1 else frame
                 self._draw(view, tracks, a, b, video_t, shown_msg, scale)
+                if frontal:
+                    self._draw_inset(view, frontal.inset(view.shape[1] // 3))
                 if writer:
                     writer.write(view)
 
@@ -211,6 +234,8 @@ class VideoProcessor:
                         time.sleep(delay)
         finally:
             cap.release()
+            if frontal:
+                frontal.release()
             if writer:
                 writer.release()
             if show:
@@ -234,6 +259,32 @@ class VideoProcessor:
                     database.set_plate(ev_id, plate)
                     save_plate_photo(ev_id, t.plates.crop(plate))
                 t.pending_plate.clear()
+
+    @staticmethod
+    def _fill_pair_plates(timeline, pending: list, now: float) -> list:
+        """Eventos sin patente: si la frontal la vio en los PAIR_AFTER segundos siguientes, se completan."""
+        left = []
+        for ev_id, t in pending:
+            seen = timeline.claim(t)
+            if seen:
+                database.set_plate(ev_id, seen.plate)
+                save_plate_photo(ev_id, seen.crop)
+            elif now - t <= config.PAIR_AFTER:
+                left.append((ev_id, t))
+        return left
+
+    @staticmethod
+    def _draw_inset(view: np.ndarray, inset) -> None:
+        """La cámara frontal en un recuadro arriba a la derecha (para ver que van sincronizadas)."""
+        if inset is None:
+            return
+        h, w = inset.shape[:2]
+        x, y = view.shape[1] - w - 8, 30
+        if y + h + 4 > view.shape[0]:
+            return
+        cv2.rectangle(view, (x - 2, y - 2), (x + w + 1, y + h + 1), WHITE, 2)
+        view[y:y + h, x:x + w] = inset
+        cv2.putText(view, "FRONTAL", (x + 4, y + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, WHITE, 2)
 
     # ---------- dibujo ----------
 

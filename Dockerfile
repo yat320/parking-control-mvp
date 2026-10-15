@@ -16,7 +16,7 @@ COPY --chown=user . .
 # El video de prueba se genera al armar la imagen, así la app arranca al toque.
 # El video de la calle real (tools/descargar_video_real.py) no va en la versión
 # publicada: su fuente no declara licencia. Se usa solo localmente.
-RUN python tools/generate_test_video.py
+RUN python tools/generate_test_video.py && python -m app.demo_plates --par videos/
 
 # Los modelos de patentes (unos 10 MB) se bajan al armar la imagen: así la primera
 # lectura no espera la descarga, y la app no depende de GitHub para arrancar.

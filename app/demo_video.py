@@ -65,7 +65,8 @@ def draw_car(frame, cx, cy, color, facing_down):
     cv2.rectangle(frame, (x1 + 12, min(front, back) + 22), (x2 - 12, max(front, back) - 4), shade, -1)  # techo
 
 
-def generate(out: Path, seconds: float, seed: int = 7) -> None:
+def generate(out: Path, seconds: float, seed: int = 7, schedule=None) -> None:
+    schedule = schedule or SCHEDULE
     rng = np.random.default_rng(seed)
     bg = make_background(rng)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -73,7 +74,7 @@ def generate(out: Path, seconds: float, seed: int = 7) -> None:
     for i in range(int(seconds * FPS)):
         t = i / FPS
         frame = bg.copy()
-        for start, direction, color in SCHEDULE:
+        for start, direction, color in schedule:
             dt = t - start
             if dt < 0:
                 continue
@@ -91,7 +92,7 @@ def generate(out: Path, seconds: float, seed: int = 7) -> None:
         writer.write(frame)
     writer.release()
     print(f"Video generado: {out} ({seconds:.0f} s, {W}x{H} @ {FPS} fps, "
-          f"{sum(1 for s in SCHEDULE if s[1] == 'down')} entradas y {sum(1 for s in SCHEDULE if s[1] == 'up')} salidas)")
+          f"{sum(1 for s in schedule if s[1] == 'down')} entradas y {sum(1 for s in schedule if s[1] == 'up')} salidas)")
 
 
 def main() -> None:

@@ -9,7 +9,9 @@ Entran AB123CD, ABC123 y AE905KT, y salen en otro orden (ABC123, AB123CD, AE905K
 por orden de llegada se cobraría al auto equivocado; por patente, al correcto.
 
     python -m app.demo_plates --out videos/patentes_prueba.mp4
+    python -m app.demo_plates --par videos/            # dos cámaras: barrera + frontal
 """
+import json
 import argparse
 from pathlib import Path
 
@@ -66,7 +68,8 @@ def draw_car(frame: np.ndarray, cx: int, cy: int, color, plate: np.ndarray) -> N
         frame[fy0:fy1, fx0:fx1] = car[fy0 - y0:fy1 - y0, fx0 - x0:fx1 - x0]
 
 
-def generate(path: Path, seconds: int = SECONDS) -> Path:
+def generate(path: Path, seconds: int = SECONDS, lead: float = 0.0) -> Path:
+    """`lead`: segundos de más al principio (la cámara empezó a grabar antes)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     out = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), FPS, (W, H))
@@ -75,8 +78,8 @@ def generate(path: Path, seconds: int = SECONDS) -> Path:
     cv2.rectangle(base, (0, 0), (W, 110), (150, 140, 120), -1)  # pared al fondo
     plates = {p: plate_image(p) for _, _, p, _ in SCHEDULE}
     travel = (H + CAR_H) / SPEED
-    for i in range(seconds * FPS):
-        t = i / FPS
+    for i in range(int((seconds + lead) * FPS)):
+        t = i / FPS - lead
         frame = base.copy()
         for start, way, plate, color in SCHEDULE:
             k = t - start
@@ -89,11 +92,32 @@ def generate(path: Path, seconds: int = SECONDS) -> Path:
     return path
 
 
+def generate_pair(folder: Path, lead: float = 0.0) -> Path:
+    """Dos cámaras de los mismos autos: par_barrera.mp4 (cenital, cuenta) y par_frontal.mp4
+    (lee las patentes), más el .json que las une. Devuelve el video de la barrera.
+
+    `lead`: la frontal empezó a grabar esos segundos antes (queda como "desfase" en el .json).
+    """
+    from . import demo_video
+    folder = Path(folder)
+    barrera = folder / "par_barrera.mp4"
+    # El mismo auto (mismo color) a la misma hora en las dos cámaras.
+    sched = [(start, way, color) for start, way, _plate, color in SCHEDULE]
+    demo_video.generate(barrera, SECONDS, schedule=sched)
+    generate(folder / "par_frontal.mp4", lead=lead)
+    barrera.with_suffix(".json").write_text(json.dumps({
+        "descripcion": "Dos cámaras: barrera (cuenta) + frontal (patentes)",
+        "frontal": "par_frontal.mp4", "desfase": lead}, ensure_ascii=False), encoding="utf-8")
+    return barrera
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, default=Path("videos/patentes_prueba.mp4"))
+    ap.add_argument("--par", type=Path, help="carpeta: arma el par de cámaras barrera + frontal")
+    ap.add_argument("--desfase", type=float, default=0.0, help="con --par: la frontal empieza N s antes")
     args = ap.parse_args()
-    print(generate(args.out))
+    print(generate_pair(args.par, args.desfase) if args.par else generate(args.out))
 
 
 if __name__ == "__main__":

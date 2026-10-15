@@ -8,7 +8,8 @@ Rutas:
   GET  /api/estado        barrera, contadores, progreso del procesamiento
   GET  /api/eventos       últimos eventos (?limit=50)
   POST /api/procesar      arranca a procesar el video (en un hilo aparte)
-  POST /api/subir         sube un video propio (form: video, orientacion, invertir, patentes)
+  POST /api/subir         sube un video propio (form: video, orientacion, invertir, patentes;
+                          opcional frontal + desfase: la cámara frontal que lee las patentes)
   GET  /api/patente/{id}.jpg  foto recortada de la patente de un evento
   POST /api/detener       corta el procesamiento
   POST /api/tarifa        {"tarifa_hora": 1000, "fraccion_min": 15}
@@ -64,18 +65,22 @@ _current_video = config.VIDEO_PATH.name
 def _list_videos() -> list[dict]:
     """Videos en la carpeta videos/, con la descripción de su .json si tiene."""
     folder = config.VIDEO_PATH.parent
-    out = []
+    videos, frontales = [], set()
     for p in sorted(folder.iterdir()) if folder.exists() else []:
         if p.suffix.lower() not in VIDEO_EXTS:
             continue
         desc = ""
         if p.with_suffix(".json").exists():
             try:
-                desc = json.loads(p.with_suffix(".json").read_text(encoding="utf-8")).get("descripcion", "")
+                data = json.loads(p.with_suffix(".json").read_text(encoding="utf-8"))
+                desc = data.get("descripcion", "")
+                if data.get("frontal"):
+                    frontales.add(Path(str(data["frontal"])).name)
             except ValueError:
                 desc = "(el .json de este video tiene un error)"
-        out.append({"nombre": p.name, "descripcion": desc})
-    return out
+        videos.append({"nombre": p.name, "descripcion": desc})
+    # La cámara frontal de un par no se procesa sola: va con el video de su barrera.
+    return [v for v in videos if v["nombre"] not in frontales]
 
 
 def _run_processing(video: Path, save_output: bool) -> None:
@@ -187,13 +192,17 @@ def procesar(body: ProcesarIn | None = None):
 
 @app.post("/api/subir")
 def subir(request: Request, video: UploadFile = File(...), orientacion: str = Form("horizontal"),
-          invertir: bool = Form(False), patentes: bool = Form(False)):
+          invertir: bool = Form(False), patentes: bool = Form(False),
+          frontal: UploadFile | None = File(None), desfase: float = Form(0.0)):
     """Guarda un video propio en videos/ con su línea virtual; después se procesa como cualquiera."""
     size = int(request.headers.get("content-length") or 0)
-    if size > (config.UPLOAD_MAX_MB + 1) * 1024 * 1024:
+    if size > (2 * config.UPLOAD_MAX_MB + 1) * 1024 * 1024:  # hasta dos videos (barrera + frontal)
         raise HTTPException(413, f"El video pesa más de {config.UPLOAD_MAX_MB} MB. Grabá uno más corto.")
     try:
-        name = uploads.save(video.file, video.filename, orientacion, invertir, patentes=patentes)
+        con_frontal = frontal is not None and bool(frontal.filename)
+        name = uploads.save(video.file, video.filename, orientacion, invertir, patentes=patentes,
+                            frontal=frontal.file if con_frontal else None,
+                            frontal_name=frontal.filename if con_frontal else None, desfase=desfase)
     except uploads.UploadError as e:
         raise HTTPException(400, str(e))
     return {"nombre": name}

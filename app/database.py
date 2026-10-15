@@ -138,9 +138,32 @@ def register_exit(ts: datetime, tracking_id: int, barrier_state: str, patente: s
 
 
 def set_plate(event_id: int, patente: str) -> None:
-    """Patente leída después de registrar el evento (el auto cruzó antes de que se le viera la chapa)."""
+    """Patente leída después de registrar el evento (el auto cruzó antes de que se le viera la chapa).
+
+    Si es una salida que se había emparejado por orden de llegada con la entrada de otra
+    patente, se la pasa a la entrada de esta patente y se recalcula el cobro; la entrada
+    que tenía antes vuelve a quedar adentro.
+    """
+    pricing = get_pricing()
     with connect() as conn:
-        conn.execute("UPDATE eventos SET patente = ? WHERE id = ? AND patente IS NULL", (patente, event_id))
+        ev = conn.execute("SELECT * FROM eventos WHERE id = ?", (event_id,)).fetchone()
+        if ev is None or ev["patente"] is not None:
+            return
+        conn.execute("UPDATE eventos SET patente = ? WHERE id = ?", (patente, event_id))
+        if ev["tipo_evento"] != "salida":
+            return
+        if ev["entrada_id"] is not None:
+            actual = conn.execute("SELECT patente FROM eventos WHERE id = ?", (ev["entrada_id"],)).fetchone()
+            if actual and actual["patente"] == patente:
+                return
+        mejor = conn.execute(OPEN_ENTRIES + " AND e.patente = ? ORDER BY e.id LIMIT 1", (patente,)).fetchone()
+        if mejor is None:
+            return
+        duracion = max(0.0, (datetime.fromisoformat(ev["timestamp"])
+                             - datetime.fromisoformat(mejor["timestamp"])).total_seconds())
+        monto = calculate_amount(duracion, pricing["tarifa_hora"], pricing["fraccion_min"])
+        conn.execute("UPDATE eventos SET entrada_id = ?, vehicle_id = ?, duracion_seg = ?, monto = ? WHERE id = ?",
+                     (mejor["id"], mejor["vehicle_id"], duracion, monto, event_id))
 
 
 def list_events(limit: int = 50) -> list[dict]:

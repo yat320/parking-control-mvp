@@ -251,6 +251,83 @@ class PlatesVideoTest(unittest.TestCase):
         self.assertTrue((config.PLATES_DIR / f"{evs[0]['id']}.jpg").exists())
 
 
+class PairingTest(unittest.TestCase):
+    """Dos cámaras: la patente que vio la frontal se le da al evento de la barrera."""
+
+    def leer(self, texto, conf=0.8):
+        import numpy as np
+        from app import plates
+        return plates.PlateRead(texto, conf, (0, 0, 10, 4), np.zeros((4, 10, 3), np.uint8))
+
+    def test_linea_de_tiempo(self):
+        from app.pairing import PlateTimeline
+        tl = PlateTimeline()
+        for t in (1.0, 1.2, 1.4):
+            tl.add(self.leer("AB123CD"), t)
+        tl.add(self.leer("AB123C"), 1.5)            # formato inválido: no cuenta
+        for t in (6.0, 6.3):
+            tl.add(self.leer("ABC123"), t)
+        tl.add(self.leer("ABC128", 0.2), 6.1)       # mala lectura suelta: no llega al puntaje
+        self.assertEqual(len(tl.sightings), 3)
+        self.assertEqual(tl.claim(2.5).plate, "AB123CD")   # vista 1 s antes del evento
+        self.assertEqual(tl.claim(6.2).plate, "ABC123")
+        self.assertIsNone(tl.claim(6.2))                   # cada vista se usa una vez
+        self.assertIsNone(tl.claim(20.0))                  # nada cerca
+
+    def test_salida_corregida_por_patente_tardia(self):
+        from datetime import datetime, timedelta
+        database.init_db()
+        database.reset_events()
+        database.set_pricing(1000, 15)
+        t0 = datetime(2026, 10, 15, 10, 0)
+        database.register_entry(t0, 1, "abierta", "AB123CD")
+        database.register_entry(t0 + timedelta(minutes=5), 2, "abierta", "ABC123")
+        s = database.register_exit(t0 + timedelta(minutes=20), 3, "abierta", None)  # sin patente todavía
+        self.assertEqual(s["vehicle_id"], "V0001")                                  # por orden de llegada
+        database.set_plate(s["id"], "ABC123")                                        # la frontal la ve después
+        salida = [e for e in database.list_events() if e["id"] == s["id"]][0]
+        self.assertEqual((salida["vehicle_id"], salida["duracion_seg"]), ("V0002", 15 * 60))
+        self.assertEqual([a["patente"] for a in database.list_inside()], ["AB123CD"])
+
+    def test_subir_par(self):
+        import io
+        import json
+        from app import uploads
+        folder = Path(tempfile.mkdtemp())
+        demo = TMP / "par_demo.mp4"
+        if not demo.exists():
+            generate(demo, 12)
+        datos = demo.read_bytes()
+        nombre = uploads.save(io.BytesIO(datos), "barrera.mp4", "horizontal", False, folder=folder,
+                              frontal=io.BytesIO(datos), frontal_name="frente.mov", desfase=1.5)
+        opts = json.loads((folder / nombre).with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertEqual((opts["frontal"], opts["desfase"]), (Path(nombre).stem + "-frontal.mov", 1.5))
+        self.assertTrue((folder / opts["frontal"]).exists())
+        with self.assertRaises(uploads.UploadError):   # la frontal no es un video: no queda nada a medias
+            uploads.save(io.BytesIO(datos), "b.mp4", "horizontal", False, folder=folder,
+                         frontal=io.BytesIO(b"nada"), frontal_name="f.mp4")
+        self.assertEqual(len(list(folder.glob("*.mp4"))) + len(list(folder.glob("*.mov"))), 2)
+
+
+@unittest.skipUnless(HAY_LECTOR, "falta fast-alpr: pip install -r requirements.txt")
+class PairVideoTest(unittest.TestCase):
+    """Barrera + frontal grabadas con 2,5 s de diferencia: cada evento con su patente."""
+
+    def test_par_sincronizado(self):
+        from app.demo_plates import generate_pair
+        folder = Path(tempfile.mkdtemp())
+        barrera = generate_pair(folder, lead=2.5)
+        database.init_db()
+        database.reset_events()
+        VideoProcessor(detector_kind="motion").process(barrera)
+        evs = list(reversed(database.list_events()))
+        self.assertEqual([(e["tipo_evento"], e["patente"]) for e in evs], [
+            ("entrada", "AB123CD"), ("entrada", "ABC123"), ("entrada", "AE905KT"),
+            ("salida", "ABC123"), ("salida", "AB123CD"), ("salida", "AE905KT")])
+        entradas = {e["id"]: e["patente"] for e in evs if e["tipo_evento"] == "entrada"}
+        self.assertTrue(all(entradas[s["entrada_id"]] == s["patente"] for s in evs if s["tipo_evento"] == "salida"))
+
+
 REAL_VIDEO = Path(__file__).resolve().parent.parent / "videos" / "calle_real.avi"
 
 

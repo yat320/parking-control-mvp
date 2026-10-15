@@ -57,3 +57,7 @@ th { color:var(--muted); font-weight:500; }
 .patente b { font-family:ui-monospace, Menlo, monospace; letter-spacing:.5px; }
 .patente img { display:block; height:28px; margin-top:4px; border-radius:3px; border:1px solid var(--line); }
 .aviso-proc { color:var(--warn); margin:6px 0 0; }
+.subir label.archivo { display:flex; flex-direction:column; gap:6px; margin:10px 0; color:var(--muted); font-size:13px; }
+.subir details { margin:6px 0 10px; }
+.subir summary { cursor:pointer; color:var(--accent); min-height:32px; display:flex; align-items:center; }
+.subir input[type=number] { max-width:140px; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; }

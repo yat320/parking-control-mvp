@@ -50,10 +50,18 @@
           <label><input type="radio" name="orientacion" id="ori-h" value="horizontal" checked> <span>De arriba hacia abajo <small>(la línea va acostada; bajar es entrada)</small></span></label>
           <label><input type="radio" name="orientacion" id="ori-v" value="vertical"> <span>De costado <small>(la línea va parada; ir a la derecha es entrada)</small></span></label>
           <label><input type="checkbox" id="invertir"> <span>Al revés: entrar es subir o ir a la izquierda</span></label>
-          <label><input type="checkbox" id="patentes"> <span>Es la cámara frontal: leer las patentes <small>(filmá el frente de los autos, de día, con la chapa a la vista pero sin pegarte)</small></span></label>
+          <label><input type="checkbox" id="patentes"> <span>Una sola cámara que también ve las patentes <small>(filmá el frente de los autos, de día, con la chapa a la vista pero sin pegarte)</small></span></label>
         </fieldset>
+        <label class="archivo">Cámara de la barrera (cuenta entradas y salidas)
+          <input type="file" id="archivo" accept="video/*" required></label>
+        <details id="dos-camaras">
+          <summary>Agregar la cámara frontal (dos videos, para leer patentes)</summary>
+          <label class="archivo">Cámara frontal: el frente de los autos, grabado al mismo tiempo
+            <input type="file" id="archivo-frontal" accept="video/*"></label>
+          <label class="archivo">Desfase: segundos que la frontal empezó a grabar antes (negativo si empezó después)
+            <input type="number" id="desfase" value="0" step="0.1" min="-90" max="90"></label>
+        </details>
         <div class="acciones">
-          <input type="file" id="archivo" accept="video/*" aria-label="Elegí o grabá un video" required>
           <button type="submit" id="btn-subir" class="primario">Subir y procesar</button>
         </div>
         <div class="progress"><div id="subida"></div></div>
