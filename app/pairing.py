@@ -28,6 +28,23 @@ class Sighting:
     best_conf: float = 0.0
     crop: np.ndarray | None = field(default=None, repr=False)
     used: bool = False
+    widths: list = field(default_factory=list, repr=False)  # ancho de la chapa en cada lectura
+
+    def trend(self) -> str:
+        """'acerca' si la chapa viene creciendo, 'aleja' si viene achicándose, '' si no se sabe.
+
+        La frontal mira hacia afuera: el auto que entra se acerca (su chapa crece) y el que
+        sale se aleja (se achica). Compara las primeras lecturas con las últimas.
+        """
+        if len(self.widths) < 3:
+            return ""
+        k = max(1, len(self.widths) // 3)
+        a, b = np.mean(self.widths[:k]), np.mean(self.widths[-k:])
+        if b > a * config.PAIR_TREND:
+            return "acerca"
+        if a > b * config.PAIR_TREND:
+            return "aleja"
+        return ""
 
     def distance(self, t: float) -> float:
         """0 si t cae mientras se la veía; si no, cuánto antes o después."""
@@ -49,25 +66,36 @@ class PlateTimeline:
             s = Sighting(read.text, t, t)
             self.sightings.append(s)
         s.score += read.confidence
+        s.widths.append(read.box[2])
         if read.confidence > s.best_conf:
             s.best_conf, s.crop = read.confidence, read.crop
         # No guardar para siempre: lo viejo ya no se puede emparejar con nada.
         if len(self.sightings) > 200:
             self.sightings = [x for x in self.sightings if t - x.last < 60]
 
-    def claim(self, t: float) -> Sighting | None:
+    def claim(self, t: float, kind: str | None = None) -> Sighting | None:
         """La patente que mejor corresponde a un evento a los t segundos (y la marca como usada).
 
         Cuentan las vistas entre PAIR_BEFORE segundos antes y PAIR_AFTER después del evento,
-        con puntaje suficiente; gana la más cercana en el tiempo y, a igual distancia, la
-        que más se leyó. Una patente se usa una sola vez por pasada.
+        con puntaje suficiente; gana la más cercana en el tiempo y, si varias se estaban viendo
+        justo en ese momento, la que apareció primero: los autos pasan en fila, así que el
+        primero que vio la frontal es el primero que llega a la barrera. Una patente se usa una
+        sola vez por pasada.
+
+        Con `kind` ('entrada' o 'salida'), no se le da a una entrada una chapa que se ve
+        alejarse ni a una salida una que se ve acercarse: con un carril de cada lado, la
+        frontal ve a la vez al que entra y al que sale.
         """
+        wrong = {"entrada": "aleja", "salida": "acerca"}.get(kind) if config.PAIR_TREND else None
+        if config.FRONTAL_LOOKS_IN and wrong:
+            wrong = {"aleja": "acerca", "acerca": "aleja"}[wrong]
         cands = [s for s in self.sightings
                  if not s.used and s.score >= config.PLATES_MIN_SCORE
-                 and s.last >= t - config.PAIR_BEFORE and s.first <= t + config.PAIR_AFTER]
+                 and s.last >= t - config.PAIR_BEFORE and s.first <= t + config.PAIR_AFTER
+                 and not (wrong and s.trend() == wrong)]
         if not cands:
             return None
-        best = min(cands, key=lambda s: (s.distance(t), -s.score))
+        best = min(cands, key=lambda s: (s.distance(t), s.first))
         best.used = True
         return best
 

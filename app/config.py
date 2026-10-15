@@ -63,6 +63,11 @@ PLATES_OCR = os.getenv("PARKING_PLATES_OCR", "argentinian-plates-cnn-synth-model
 PAIR_BEFORE = float(os.getenv("PARKING_PAIR_BEFORE", "5"))   # vista hasta 5 s antes del evento
 PAIR_AFTER = float(os.getenv("PARKING_PAIR_AFTER", "2"))     # o hasta 2 s después
 PAIR_GAP_SECONDS = float(os.getenv("PARKING_PAIR_GAP", "2"))  # lecturas a menos de esto son la misma pasada
+# Si la chapa crece más que esto (o se achica), el auto se acerca (o se aleja) de la frontal.
+# Una entrada no se lleva una chapa que se aleja ni una salida una que se acerca. 0 = no mirar.
+PAIR_TREND = float(os.getenv("PARKING_PAIR_TREND", "1.15"))
+# La frontal mira hacia afuera (ve llegar a los que entran). Si mira hacia adentro, PARKING_FRONTAL_ADENTRO=1.
+FRONTAL_LOOKS_IN = os.getenv("PARKING_FRONTAL_ADENTRO", "0") == "1"
 PLATES_DIR = Path(os.getenv("PARKING_PLATES_DIR", BASE_DIR / "data" / "patentes"))  # fotos recortadas
 
 # Tarifa por defecto (se puede cambiar desde la web; queda guardada en SQLite).

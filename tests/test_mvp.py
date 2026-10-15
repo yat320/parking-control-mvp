@@ -275,6 +275,20 @@ class PairingTest(unittest.TestCase):
         self.assertIsNone(tl.claim(6.2))                   # cada vista se usa una vez
         self.assertIsNone(tl.claim(20.0))                  # nada cerca
 
+    def test_direccion(self):
+        """Con un carril de cada lado, la frontal ve a la vez al que entra (chapa que crece)
+        y al que sale (chapa que se achica): cada evento se lleva la que corresponde."""
+        import numpy as np
+        from app import plates
+        from app.pairing import PlateTimeline
+        tl = PlateTimeline()
+        leer = lambda txt, w: plates.PlateRead(txt, 0.8, (0, 0, w, w // 3), np.zeros((4, 10, 3), np.uint8))
+        for i, t in enumerate((10.0, 10.3, 10.6, 10.9, 11.2)):
+            tl.add(leer("AE905KT", 200 - 25 * i), t - 0.5)   # se aleja: sale; apareció antes
+            tl.add(leer("AB123CD", 80 + 25 * i), t)          # se acerca: entra
+        self.assertEqual(tl.claim(11.0, "entrada").plate, "AB123CD")
+        self.assertEqual(tl.claim(11.0, "salida").plate, "AE905KT")
+
     def test_salida_corregida_por_patente_tardia(self):
         from datetime import datetime, timedelta
         database.init_db()

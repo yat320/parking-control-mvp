@@ -181,7 +181,7 @@ class VideoProcessor:
                         ts = start_wall + timedelta(seconds=video_t * self.time_scale)
                         plate, crop = None, None
                         if frontal:
-                            seen = frontal.timeline.claim(video_t)
+                            seen = frontal.timeline.claim(video_t, kind)
                             if seen:
                                 plate, crop = seen.plate, seen.crop
                         elif same_cam:
@@ -200,7 +200,7 @@ class VideoProcessor:
                         if plate:
                             save_plate_photo(ev["id"], crop)
                         elif frontal:
-                            pending_pair.append((ev["id"], video_t))      # la frontal la puede ver enseguida
+                            pending_pair.append((ev["id"], video_t, kind))  # la frontal la puede ver enseguida
                         elif same_cam:
                             tr.pending_plate.append((ev["id"], video_t))  # se completa si se lee enseguida
                         message_until = video_t + MESSAGE_SECONDS
@@ -264,13 +264,13 @@ class VideoProcessor:
     def _fill_pair_plates(timeline, pending: list, now: float) -> list:
         """Eventos sin patente: si la frontal la vio en los PAIR_AFTER segundos siguientes, se completan."""
         left = []
-        for ev_id, t in pending:
-            seen = timeline.claim(t)
+        for ev_id, t, kind in pending:
+            seen = timeline.claim(t, kind)
             if seen:
                 database.set_plate(ev_id, seen.plate)
                 save_plate_photo(ev_id, seen.crop)
             elif now - t <= config.PAIR_AFTER:
-                left.append((ev_id, t))
+                left.append((ev_id, t, kind))
         return left
 
     @staticmethod
