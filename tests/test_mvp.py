@@ -268,7 +268,8 @@ class PairingTest(unittest.TestCase):
         tl.add(self.leer("AB123C"), 1.5)            # formato inválido: no cuenta
         for t in (6.0, 6.3):
             tl.add(self.leer("ABC123"), t)
-        tl.add(self.leer("ABC128", 0.2), 6.1)       # mala lectura suelta: no llega al puntaje
+        tl.add(self.leer("ABC128", 0.2), 6.1)       # error de una letra: se junta con ABC123
+        tl.add(self.leer("XYZ987", 0.2), 6.1)       # mala lectura suelta: no llega al puntaje
         self.assertEqual(len(tl.sightings), 3)
         self.assertEqual(tl.claim(2.5).plate, "AB123CD")   # vista 1 s antes del evento
         self.assertEqual(tl.claim(6.2).plate, "ABC123")
@@ -288,6 +289,29 @@ class PairingTest(unittest.TestCase):
             tl.add(leer("AB123CD", 80 + 25 * i), t)          # se acerca: entra
         self.assertEqual(tl.claim(11.0, "entrada").plate, "AB123CD")
         self.assertEqual(tl.claim(11.0, "salida").plate, "AE905KT")
+
+    def test_una_letra_de_diferencia(self):
+        """El OCR erra una letra (AA310VF por AA310WF): se junta con su vista y se cobra igual."""
+        from datetime import datetime, timedelta
+        from app import plates
+        from app.pairing import PlateTimeline
+        self.assertTrue(plates.one_off("AA310WF", "AA310VF"))
+        self.assertFalse(plates.one_off("AA310WF", "AA311VF") or plates.one_off("ABC123", "AB123CD"))
+        tl = PlateTimeline()
+        for t, txt in ((1.0, "AA310WF"), (1.2, "AA310VF"), (1.4, "AA310WF"), (1.6, "AA310WF")):
+            tl.add(self.leer(txt), t)
+        self.assertEqual([s.plate for s in tl.sightings], ["AA310WF"])   # una sola vista, la que más suma
+        database.init_db()
+        database.reset_events()
+        t0 = datetime(2026, 10, 15, 10, 0)
+        database.register_entry(t0, 1, "abierta", "AA310WF")
+        database.register_entry(t0, 2, "abierta", "IQD430")
+        s = database.register_exit(t0 + timedelta(minutes=30), 3, "abierta", "IOD430")  # leída con un error
+        self.assertEqual(s["vehicle_id"], "V0002")
+        database.register_entry(t0, 4, "abierta", "AB123CD")
+        database.register_entry(t0, 5, "abierta", "AB123CE")
+        s = database.register_exit(t0 + timedelta(minutes=30), 6, "abierta", "AB123CF")  # dos parecidas: ninguna
+        self.assertEqual(s["vehicle_id"], "sin-entrada")
 
     def test_salida_corregida_por_patente_tardia(self):
         from datetime import datetime, timedelta

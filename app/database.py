@@ -23,6 +23,7 @@ from contextlib import contextmanager
 from datetime import datetime
 
 from . import config
+from .plates import one_off
 from .pricing import calculate_amount
 
 SCHEMA = """
@@ -104,17 +105,29 @@ OPEN_ENTRIES = """SELECT e.* FROM eventos e
                     AND NOT EXISTS (SELECT 1 FROM eventos s WHERE s.entrada_id = e.id)"""
 
 
+def _entry_for_plate(conn, patente: str):
+    """La entrada abierta de esa patente; si no hay, la única que difiere en una letra
+    (el OCR leyó AA310VF a la salida y AA310WF a la entrada). Si hay dos parecidas, ninguna."""
+    entry = conn.execute(OPEN_ENTRIES + " AND e.patente = ? ORDER BY e.id LIMIT 1", (patente,)).fetchone()
+    if entry is not None:
+        return entry
+    near = [e for e in conn.execute(OPEN_ENTRIES + " AND e.patente IS NOT NULL ORDER BY e.id").fetchall()
+            if one_off(e["patente"], patente)]
+    return near[0] if len(near) == 1 else None
+
+
 def register_exit(ts: datetime, tracking_id: int, barrier_state: str, patente: str | None = None) -> dict:
     """Registra una salida, la empareja con su entrada y cobra.
 
-    Con patente: la entrada abierta de esa patente; si no hay, la más vieja de las que
-    entraron sin patente leída (nunca la de otra patente). Sin patente: la más vieja (FIFO).
+    Con patente: la entrada abierta de esa patente (o la única que difiere en una letra);
+    si no hay, la más vieja de las que entraron sin patente leída (nunca la de otra
+    patente). Sin patente: la más vieja (FIFO).
     """
     pricing = get_pricing()
     with connect() as conn:
         entry = None
         if patente:
-            entry = conn.execute(OPEN_ENTRIES + " AND e.patente = ? ORDER BY e.id LIMIT 1", (patente,)).fetchone()
+            entry = _entry_for_plate(conn, patente)
             if entry is None:
                 entry = conn.execute(OPEN_ENTRIES + " AND e.patente IS NULL ORDER BY e.id LIMIT 1").fetchone()
         else:
@@ -154,9 +167,9 @@ def set_plate(event_id: int, patente: str) -> None:
             return
         if ev["entrada_id"] is not None:
             actual = conn.execute("SELECT patente FROM eventos WHERE id = ?", (ev["entrada_id"],)).fetchone()
-            if actual and actual["patente"] == patente:
+            if actual and actual["patente"] and (actual["patente"] == patente or one_off(actual["patente"], patente)):
                 return
-        mejor = conn.execute(OPEN_ENTRIES + " AND e.patente = ? ORDER BY e.id LIMIT 1", (patente,)).fetchone()
+        mejor = _entry_for_plate(conn, patente)
         if mejor is None:
             return
         duracion = max(0.0, (datetime.fromisoformat(ev["timestamp"])

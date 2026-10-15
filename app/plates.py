@@ -31,6 +31,11 @@ def is_valid(plate: str) -> bool:
     return any(f.match(plate) for f in FORMATS)
 
 
+def one_off(a: str, b: str) -> bool:
+    """Misma patente salvo una letra o número (AA310WF / AA310VF): un error típico del OCR."""
+    return len(a) == len(b) and sum(x != y for x, y in zip(a, b)) == 1
+
+
 def pretty(plate: str) -> str:
     """Como se escribe en la chapa: 'ABC 123' o 'AB 123 CD'."""
     if FORMATS[0].match(plate):

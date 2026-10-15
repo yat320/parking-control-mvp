@@ -20,7 +20,11 @@ from . import config, plates
 
 @dataclass
 class Sighting:
-    """Una patente vista por la frontal, en una o varias lecturas seguidas."""
+    """Una patente vista por la frontal, en una o varias lecturas seguidas.
+
+    Lecturas que difieren en una letra (AA310WF / AA310VF) mientras se ve al auto son del
+    mismo auto: se juntan y la patente es la que más suma (`texts`).
+    """
     plate: str
     first: float           # segundos, en el reloj de la cámara de la barrera
     last: float
@@ -29,6 +33,7 @@ class Sighting:
     crop: np.ndarray | None = field(default=None, repr=False)
     used: bool = False
     widths: list = field(default_factory=list, repr=False)  # ancho de la chapa en cada lectura
+    texts: dict = field(default_factory=dict, repr=False)   # texto leído -> suma de confianzas
 
     def trend(self) -> str:
         """'acerca' si la chapa viene creciendo, 'aleja' si viene achicándose, '' si no se sabe.
@@ -59,12 +64,15 @@ class PlateTimeline:
         if not plates.is_valid(read.text):
             return
         for s in reversed(self.sightings):
-            if s.plate == read.text and t - s.last <= config.PAIR_GAP_SECONDS:
+            if t - s.last <= config.PAIR_GAP_SECONDS and (
+                    s.plate == read.text or any(plates.one_off(x, read.text) for x in s.texts)):
                 s.last = t
                 break
         else:
             s = Sighting(read.text, t, t)
             self.sightings.append(s)
+        s.texts[read.text] = s.texts.get(read.text, 0.0) + read.confidence
+        s.plate = max(s.texts.items(), key=lambda kv: kv[1])[0]
         s.score += read.confidence
         s.widths.append(read.box[2])
         if read.confidence > s.best_conf:
