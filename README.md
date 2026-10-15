@@ -70,8 +70,8 @@ patente**, no a la más vieja. En la web: tildar **Es la cámara frontal: leer l
 subir el video. Por consola: `python -m app.video_processor --video X.mp4 --patentes`. En un
 `.json` de video: `"patentes": true`. Para todos los videos: `PARKING_PLATES=1`.
 
-- Usa [fast-alpr](https://github.com/ankandrew/fast-alpr) (detector YOLO + OCR en ONNX, sin GPU,
-  ~30 ms por cuadro). Los modelos se bajan la primera vez (en Docker, al armar la imagen).
+- Usa [fast-alpr](https://github.com/ankandrew/fast-alpr) (detector YOLO + OCR argentino en ONNX,
+  sin GPU, ~80 ms por cuadro de 1280x720). Los modelos se bajan la primera vez (en Docker, al armar la imagen).
 - Lee cada 3 cuadros mientras hay autos (`PARKING_PLATES_EVERY`), le da cada lectura al auto que la
   contiene y decide con sus últimas 6 lecturas (`PARKING_PLATES_WINDOW`), pesadas por confianza.
   Solo acepta formato argentino; una lectura como `AB123C` no cuenta.
@@ -104,6 +104,33 @@ salida pasa a la entrada de esa patente y se recalcula el cobro.
 - `python -m app.demo_plates --par videos/ [--desfase 2.5]` arma el par de prueba
   (`par_barrera.mp4` + `par_frontal.mp4`); la imagen de Docker ya lo trae.
 - El video procesado muestra la frontal en un recuadro, para ver que van sincronizadas.
+
+Con un carril de cada lado, la frontal ve a la vez al que entra y al que sale: si la chapa crece
+el auto se acerca (entra) y si se achica se aleja (sale), y una entrada no se lleva una chapa que se
+aleja (`PARKING_PAIR_TREND`; si la frontal mira hacia adentro, `PARKING_FRONTAL_ADENTRO=1`). Si
+varias se estaban viendo justo al cruzar, gana la que apareció primero: los autos pasan en fila.
+El OCR suele errar una sola letra (AA310VF por AA310WF): esas lecturas se juntan con su vista, y al
+cobrar se acepta la única entrada que difiere en una letra (si hay dos parecidas, ninguna).
+
+### Cuánto acierta (medido)
+
+- **OCR**, 735 patentes argentinas reales (validación de `arg_plate_dataset` de fast-plate-ocr),
+  una lectura por chapa: `argentinian-plates-cnn-synth-model` 96,6% (93% de noche, ~2 ms),
+  `cct-s-v1-global-model` 96,1% (~24 ms), `cct-xs-v1-global-model` 92,8%.
+- **Detector**, 222 fotos reales de autos en la calle (benchmarks de OpenALPR, Brasil y Europa):
+  encontró la chapa en todas, a ~40 ms por foto.
+- **Las dos cámaras de punta a punta**, con fotos reales de autos con patentes argentinas reales
+  pegadas, animadas acercándose y alejándose (6 autos entran y salen en otro orden; ese armado usa
+  datos AGPL y no está en el repo): salidas cobradas a la entrada correcta, de 6:
+
+  | caso | 6/6 | caso | resultado |
+  |---|---|---|---|
+  | normal, poca luz, borroso | 6/6 | muy poca luz, muy borroso | 5/6 (la otra queda sin entrada, no a otro auto) |
+  | autos cada 3 s o cada 2 s | 6/6 | chapa a ~10% del ancho | 6/6 con el detector de 640 (2/6 con el de 384) |
+  | | | chapa a ~6% del ancho | 2/6: la cámara está muy lejos |
+
+  Cuando no lee la patente, la salida se empareja por orden de llegada y puede cobrarle a otro
+  auto: la cámara frontal tiene que ver la chapa grande (cerca, o con zoom).
 
 Con cámaras en vivo es lo mismo con la hora del reloj (sin desfase): está en la rama
 `camara-en-vivo`, que falta juntar con esta.

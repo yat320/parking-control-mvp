@@ -87,10 +87,10 @@ class VideoProcessor:
         """
         opts = config.video_settings(Path(video_path), {
             "line": self.line_rel, "entry_sign": self.entry_sign, "min_area": self.min_area,
-            "plates": config.PLATES, "frontal": None, "offset": 0.0, "ocr": None})
+            "plates": config.PLATES, "frontal": None, "offset": 0.0, "ocr": None, "plate_detector": None})
         line_rel, entry_sign, min_area = opts["line"], opts["entry_sign"], opts["min_area"]
         want_plates = opts["plates"] or bool(opts["frontal"])
-        reader = plates.create_reader(opts["ocr"]) if want_plates else None
+        reader = plates.create_reader(opts["ocr"], opts["plate_detector"]) if want_plates else None
         self.notice = ("No se pueden leer patentes en este servidor: los autos quedan con número."
                        if want_plates and reader is None else "")
         self._plate_boxes = []

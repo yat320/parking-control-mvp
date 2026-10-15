@@ -122,20 +122,21 @@ _readers: dict = {}
 _failed: set = set()
 
 
-def create_reader(ocr_model: str | None = None) -> PlateReader | None:
-    """El lector de ese OCR (los modelos se cargan una sola vez). None si no se puede.
+def create_reader(ocr_model: str | None = None, detector_model: str | None = None) -> PlateReader | None:
+    """El lector con ese OCR y ese detector (los modelos se cargan una sola vez). None si no se puede.
 
-    Por defecto, config.PLATES_OCR. Un video puede pedir otro en su .json ("ocr"): los de
-    prueba con chapas dibujadas usan el global, que lee mejor esa letra que el argentino.
+    Por defecto, config.PLATES_OCR y config.PLATES_DETECTOR. Un video puede pedir otros en su
+    .json ("ocr", "detector_patentes"): los de prueba con chapas dibujadas usan los que mejor
+    leen esos dibujos (ver demo_plates.py).
     """
-    model = ocr_model or config.PLATES_OCR
-    if model not in _readers and model not in _failed:
+    key = (ocr_model or config.PLATES_OCR, detector_model or config.PLATES_DETECTOR)
+    if key not in _readers and key not in _failed:
         try:
-            _readers[model] = PlateReader(ocr_model=model)
+            _readers[key] = PlateReader(detector_model=key[1], ocr_model=key[0])
         except Exception as e:  # sin fast-alpr, o sin los modelos
-            _failed.add(model)
-            print(f"[PATENTES] no se pueden leer patentes con {model}: {e}", flush=True)
-    return _readers.get(model)
+            _failed.add(key)
+            print(f"[PATENTES] no se pueden leer patentes con {key}: {e}", flush=True)
+    return _readers.get(key)
 
 
 def assign(reads: list[PlateRead], tracks, scale: float = 1.0) -> None:

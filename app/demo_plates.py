@@ -21,9 +21,11 @@ import numpy as np
 W, H, FPS = 960, 540, 20
 CAR_W, CAR_H = 330, 230
 SPEED = 170  # px/s
-# Las chapas dibujadas no tienen la letra de las reales: el OCR argentino (entrenado con chapas
-# de verdad) las lee mal y el global las lee bien. Los videos de prueba piden el global.
+# Las chapas dibujadas no son como las reales: el OCR argentino (entrenado con chapas de verdad)
+# las lee mal y el global bien, y el detector de 640 no las encuentra y el de 384 sí. Los videos
+# de prueba piden esos dos; con chapas reales rinden más los de config.py.
 DRAWN_OCR = "cct-xs-v1-global-model"
+DRAWN_DETECTOR = "yolo-v9-t-384-license-plate-end2end"
 PLATE_W, PLATE_H = 100, 32  # ~10% del ancho: el detector, entrenado con fotos reales, no ve chapas mucho más grandes
 
 # (segundo, sentido, patente, color del auto BGR). "down" = entra, "up" = sale.
@@ -111,7 +113,7 @@ def generate_pair(folder: Path, lead: float = 0.0) -> Path:
     barrera.with_suffix(".json").write_text(json.dumps({
         "descripcion": "Dos cámaras: barrera (cuenta) + frontal (patentes)",
         "frontal": "par_frontal.mp4", "desfase": lead,
-        "ocr": DRAWN_OCR}, ensure_ascii=False), encoding="utf-8")
+        "ocr": DRAWN_OCR, "detector_patentes": DRAWN_DETECTOR}, ensure_ascii=False), encoding="utf-8")
     return barrera
 
 

@@ -54,7 +54,9 @@ PLATES_EVERY = int(os.getenv("PARKING_PLATES_EVERY", "3"))          # leer cada 
 PLATES_MIN_SCORE = float(os.getenv("PARKING_PLATES_MIN_SCORE", "0.5"))  # suma de confianzas para aceptar una patente
 PLATES_WINDOW = int(os.getenv("PARKING_PLATES_WINDOW", "6"))       # lecturas recientes que votan (~1 s)
 PLATES_LATE_SECONDS = float(os.getenv("PARKING_PLATES_LATE", "3"))  # si se lee después de cruzar, hasta cuándo vale
-PLATES_DETECTOR = os.getenv("PARKING_PLATES_DETECTOR", "yolo-v9-t-384-license-plate-end2end")
+# Detector de 640: encuentra chapas más chicas (cámara más lejos) que el de 384, a ~76 ms por
+# cuadro de 1280x720 en vez de ~36 (y se lee uno de cada PLATES_EVERY cuadros).
+PLATES_DETECTOR = os.getenv("PARKING_PLATES_DETECTOR", "yolo-v9-t-640-license-plate-end2end")
 # OCR entrenado con patentes argentinas: 96,6% de aciertos leyendo una sola vez 735 chapas reales
 # (contra 92,8% del global "cct-xs-v1-global-model"), y ~2 ms por chapa.
 PLATES_OCR = os.getenv("PARKING_PLATES_OCR", "argentinian-plates-cnn-synth-model")
@@ -80,8 +82,8 @@ def video_settings(video_path: Path, defaults: dict) -> dict:
 
     Ejemplo de videos/calle_real.json:
         {"line": [0.5, 0.95, 0.5, 0.05], "entry_direction": "down", "min_area": 300}
-    Con "patentes": true, es una cámara frontal y se leen las patentes; "ocr" elige otro
-    modelo de OCR para ese video (por ejemplo, el global para chapas dibujadas).
+    Con "patentes": true, es una cámara frontal y se leen las patentes; "ocr" y
+    "detector_patentes" eligen otros modelos para ese video (los de las chapas dibujadas).
     Con "frontal": "otro.mp4", ese video es la cámara frontal de este (las patentes se
     leen ahí) y "desfase": segundos que la frontal empezó a grabar antes (negativo: después).
     Lo que no esté en el archivo queda con el valor de `defaults`
@@ -101,6 +103,8 @@ def video_settings(video_path: Path, defaults: dict) -> dict:
             opts["plates"] = bool(data["patentes"])
         if data.get("ocr"):
             opts["ocr"] = str(data["ocr"])
+        if data.get("detector_patentes"):
+            opts["plate_detector"] = str(data["detector_patentes"])
         if data.get("frontal"):
             opts["frontal"] = sidecar.parent / Path(str(data["frontal"])).name  # siempre en la misma carpeta
             opts["offset"] = float(data.get("desfase", 0))
