@@ -38,6 +38,7 @@
         escala de tiempo: 1 s de video = {{ time_scale|int }} s de estadía ·
         <span id="mensaje"></span></p>
       <p id="error" class="error"></p>
+      <p id="aviso" class="aviso-proc"></p>
 
       <form id="form-subir" class="subir">
         <h2>Probar con tu video</h2>
@@ -49,6 +50,7 @@
           <label><input type="radio" name="orientacion" id="ori-h" value="horizontal" checked> <span>De arriba hacia abajo <small>(la línea va acostada; bajar es entrada)</small></span></label>
           <label><input type="radio" name="orientacion" id="ori-v" value="vertical"> <span>De costado <small>(la línea va parada; ir a la derecha es entrada)</small></span></label>
           <label><input type="checkbox" id="invertir"> <span>Al revés: entrar es subir o ir a la izquierda</span></label>
+          <label><input type="checkbox" id="patentes"> <span>Es la cámara frontal: leer las patentes <small>(filmá el frente de los autos, de día, con la chapa a la vista pero sin pegarte)</small></span></label>
         </fieldset>
         <div class="acciones">
           <input type="file" id="archivo" accept="video/*" aria-label="Elegí o grabá un video" required>
@@ -89,8 +91,8 @@
       <h2>Últimos eventos</h2>
       <div class="tabla">
         <table>
-          <thead><tr><th>#</th><th>Tipo</th><th>Hora</th><th>Vehículo</th><th>Track</th><th>Barrera</th><th>Estadía</th><th>Monto</th></tr></thead>
-          <tbody id="eventos"><tr><td colspan="8" class="vacio">Sin eventos todavía.</td></tr></tbody>
+          <thead><tr><th>#</th><th>Tipo</th><th>Patente</th><th>Hora</th><th>Vehículo</th><th>Track</th><th>Barrera</th><th>Estadía</th><th>Monto</th></tr></thead>
+          <tbody id="eventos"><tr><td colspan="9" class="vacio">Sin eventos todavía.</td></tr></tbody>
         </table>
       </div>
     </section>

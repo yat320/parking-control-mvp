@@ -47,6 +47,17 @@ UPLOAD_MAX_SECONDS = int(os.getenv("PARKING_UPLOAD_SECONDS", "90"))
 UPLOAD_KEEP = int(os.getenv("PARKING_UPLOAD_KEEP", "5"))       # se guardan solo los últimos
 UPLOAD_MIN_AREA = int(os.getenv("PARKING_UPLOAD_MIN_AREA", "1500"))  # en el video ya achicado
 
+# Patentes (cámara frontal). Se leen en los videos cuyo .json dice "patentes": true, o en
+# todos con PARKING_PLATES=1. Hace falta fast-alpr (requirements.txt); sin eso, no se leen.
+PLATES = os.getenv("PARKING_PLATES", "0") == "1"
+PLATES_EVERY = int(os.getenv("PARKING_PLATES_EVERY", "3"))          # leer cada N frames
+PLATES_MIN_SCORE = float(os.getenv("PARKING_PLATES_MIN_SCORE", "0.5"))  # suma de confianzas para aceptar una patente
+PLATES_WINDOW = int(os.getenv("PARKING_PLATES_WINDOW", "6"))       # lecturas recientes que votan (~1 s)
+PLATES_LATE_SECONDS = float(os.getenv("PARKING_PLATES_LATE", "3"))  # si se lee después de cruzar, hasta cuándo vale
+PLATES_DETECTOR = os.getenv("PARKING_PLATES_DETECTOR", "yolo-v9-t-384-license-plate-end2end")
+PLATES_OCR = os.getenv("PARKING_PLATES_OCR", "cct-xs-v1-global-model")
+PLATES_DIR = Path(os.getenv("PARKING_PLATES_DIR", BASE_DIR / "data" / "patentes"))  # fotos recortadas
+
 # Tarifa por defecto (se puede cambiar desde la web; queda guardada en SQLite).
 DEFAULT_RATE_PER_HOUR = float(os.getenv("PARKING_RATE", "1000"))
 DEFAULT_FRACTION_MINUTES = int(os.getenv("PARKING_FRACTION", "15"))
@@ -57,8 +68,9 @@ def video_settings(video_path: Path, defaults: dict) -> dict:
 
     Ejemplo de videos/calle_real.json:
         {"line": [0.5, 0.95, 0.5, 0.05], "entry_direction": "down", "min_area": 300}
+    Con "patentes": true, es una cámara frontal y se leen las patentes.
     Lo que no esté en el archivo queda con el valor de `defaults`
-    (claves: line, entry_sign, min_area).
+    (claves: line, entry_sign, min_area, plates).
     """
     opts = dict(defaults)
     sidecar = Path(video_path).with_suffix(".json")
@@ -70,4 +82,6 @@ def video_settings(video_path: Path, defaults: dict) -> dict:
             opts["entry_sign"] = 1 if data["entry_direction"] == "down" else -1
         if "min_area" in data:
             opts["min_area"] = int(data["min_area"])
+        if "patentes" in data:
+            opts["plates"] = bool(data["patentes"])
     return opts

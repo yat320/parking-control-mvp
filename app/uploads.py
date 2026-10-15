@@ -28,7 +28,8 @@ class UploadError(ValueError):
     """Un video que no se puede usar; el mensaje se muestra tal cual en la web."""
 
 
-def save(fileobj, filename: str | None, orientacion: str, invertir: bool, folder: Path | None = None) -> str:
+def save(fileobj, filename: str | None, orientacion: str, invertir: bool, folder: Path | None = None,
+         patentes: bool = False) -> str:
     """Guarda el video subido y su .json. Devuelve el nombre del archivo en videos/."""
     folder = Path(folder or config.VIDEO_PATH.parent)
     ext = Path(filename or "").suffix.lower()
@@ -62,11 +63,13 @@ def save(fileobj, filename: str | None, orientacion: str, invertir: bool, folder
     if invertir:
         direction = "up" if direction == "down" else "down"
     length = f", {seconds:.0f} s" if seconds else ""
+    frontal = ", lee patentes" if patentes else ""
     dest.with_suffix(".json").write_text(json.dumps({
-        "descripcion": f"Video subido ({how}{length})",
+        "descripcion": f"Video subido ({how}{length}{frontal})",
         "line": line,
         "entry_direction": direction,
         "min_area": config.UPLOAD_MIN_AREA,
+        "patentes": bool(patentes),
     }, ensure_ascii=False), encoding="utf-8")
     prune(folder)
     return dest.name

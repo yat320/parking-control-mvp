@@ -8,7 +8,8 @@ Rutas:
   GET  /api/estado        barrera, contadores, progreso del procesamiento
   GET  /api/eventos       últimos eventos (?limit=50)
   POST /api/procesar      arranca a procesar el video (en un hilo aparte)
-  POST /api/subir         sube un video propio (form: video, orientacion, invertir)
+  POST /api/subir         sube un video propio (form: video, orientacion, invertir, patentes)
+  GET  /api/patente/{id}.jpg  foto recortada de la patente de un evento
   POST /api/detener       corta el procesamiento
   POST /api/tarifa        {"tarifa_hora": 1000, "fraccion_min": 15}
   POST /api/barrera/abrir apertura manual (como el botón de la cabina)
@@ -22,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -136,6 +137,7 @@ def estado():
         "detectados": processor.detected_now if processor.running else 0,
         "ultimo_mensaje": processor.last_message,
         "error": _last_error,
+        "aviso": processor.notice,
         "tarifa": database.get_pricing(),
         "stats": database.stats(),
         "adentro": database.list_inside(),
@@ -148,7 +150,18 @@ def estado():
 
 @app.get("/api/eventos")
 def eventos(limit: int = 50):
-    return database.list_events(min(max(limit, 1), 500))
+    evs = database.list_events(min(max(limit, 1), 500))
+    for e in evs:
+        e["foto"] = bool(e.get("patente")) and (config.PLATES_DIR / f"{e['id']}.jpg").exists()
+    return evs
+
+
+@app.get("/api/patente/{event_id}.jpg")
+def foto_patente(event_id: int):
+    path = config.PLATES_DIR / f"{event_id}.jpg"
+    if not path.exists():
+        raise HTTPException(404, "Ese evento no tiene foto de patente")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 class ProcesarIn(BaseModel):
@@ -174,13 +187,13 @@ def procesar(body: ProcesarIn | None = None):
 
 @app.post("/api/subir")
 def subir(request: Request, video: UploadFile = File(...), orientacion: str = Form("horizontal"),
-          invertir: bool = Form(False)):
+          invertir: bool = Form(False), patentes: bool = Form(False)):
     """Guarda un video propio en videos/ con su línea virtual; después se procesa como cualquiera."""
     size = int(request.headers.get("content-length") or 0)
     if size > (config.UPLOAD_MAX_MB + 1) * 1024 * 1024:
         raise HTTPException(413, f"El video pesa más de {config.UPLOAD_MAX_MB} MB. Grabá uno más corto.")
     try:
-        name = uploads.save(video.file, video.filename, orientacion, invertir)
+        name = uploads.save(video.file, video.filename, orientacion, invertir, patentes=patentes)
     except uploads.UploadError as e:
         raise HTTPException(400, str(e))
     return {"nombre": name}

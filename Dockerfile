@@ -18,6 +18,10 @@ COPY --chown=user . .
 # publicada: su fuente no declara licencia. Se usa solo localmente.
 RUN python tools/generate_test_video.py
 
+# Los modelos de patentes (unos 10 MB) se bajan al armar la imagen: así la primera
+# lectura no espera la descarga, y la app no depende de GitHub para arrancar.
+RUN python -c "from app import plates; assert plates.create_reader(), 'no se pudieron bajar los modelos'"
+
 EXPOSE 7860
 # Render (y otros servicios) dicen el puerto en $PORT; sin eso, 7860 como en Hugging Face.
 CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]

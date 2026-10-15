@@ -7,6 +7,7 @@ from pathlib import Path
 # Base y videos en una carpeta temporal, para no tocar data/parking.db.
 TMP = Path(tempfile.mkdtemp())
 os.environ["PARKING_DB"] = str(TMP / "test.db")
+os.environ["PARKING_PLATES_DIR"] = str(TMP / "patentes")
 
 from app import config, database  # noqa: E402
 from app.barrier_controller import CLOSED, OPEN, BarrierController  # noqa: E402
@@ -158,6 +159,96 @@ class UploadTest(unittest.TestCase):
         events = VideoProcessor(detector_kind="motion", time_scale=60).process(grande)
         self.assertEqual([e["tipo_evento"] for e in events],
                          ["entrada", "entrada", "salida", "entrada", "salida", "salida"])
+
+
+class PlatesTest(unittest.TestCase):
+    """Patentes: formato, votos y emparejar la salida por patente (sin el lector)."""
+
+    def test_formato(self):
+        from app import plates
+        self.assertEqual(plates.normalize("ab 123-cd"), "AB123CD")
+        self.assertTrue(plates.is_valid("AB123CD") and plates.is_valid("ABC123"))
+        self.assertFalse(plates.is_valid("AB123C") or plates.is_valid("1234567"))
+        self.assertEqual((plates.pretty("AB123CD"), plates.pretty("ABC123")), ("AB 123 CD", "ABC 123"))
+
+    def test_votos_recientes(self):
+        import numpy as np
+        from app import plates
+        votes = plates.PlateVotes()
+        leer = lambda t, c=0.8: plates.PlateRead(t, c, (0, 0, 10, 4), np.zeros((4, 10, 3), np.uint8))
+        self.assertIsNone(votes.best())
+        votes.add(leer("AB123C"))                    # formato inválido: no cuenta
+        self.assertIsNone(votes.best())
+        for _ in range(5):
+            votes.add(leer("ABC123"))
+        votes.add(leer("ABC128", 0.3))               # una mala lectura no gana
+        self.assertEqual(votes.best(), "ABC123")
+        cambio = [votes.add(leer("AE905KT")) for _ in range(config.PLATES_WINDOW)]
+        self.assertEqual(votes.best(), "AE905KT")    # otro auto con el mismo track
+        self.assertTrue(any(cambio))
+
+    def test_salida_por_patente(self):
+        from datetime import datetime, timedelta
+        database.init_db()
+        database.reset_events()
+        database.set_pricing(1000, 15)
+        t0 = datetime(2026, 10, 15, 10, 0)
+        database.register_entry(t0, 1, "abierta", "AB123CD")
+        database.register_entry(t0 + timedelta(minutes=5), 2, "abierta", "ABC123")
+        database.register_entry(t0 + timedelta(minutes=6), 3, "abierta", None)
+        s1 = database.register_exit(t0 + timedelta(minutes=20), 4, "abierta", "ABC123")   # no la más vieja
+        self.assertEqual((s1["vehicle_id"], s1["duracion_seg"]), ("V0002", 15 * 60))
+        s2 = database.register_exit(t0 + timedelta(minutes=30), 5, "abierta", "ZZZ999")   # sin entrada con esa patente
+        self.assertEqual(s2["vehicle_id"], "V0003")                                         # va a una sin patente leída
+        s3 = database.register_exit(t0 + timedelta(minutes=40), 6, "abierta", "AE905KT")  # nunca a otra patente
+        self.assertEqual(s3["vehicle_id"], "sin-entrada")
+        self.assertEqual([a["patente"] for a in database.list_inside()], ["AB123CD"])
+
+    def test_base_vieja_se_migra(self):
+        import sqlite3
+        vieja = TMP / "vieja.db"
+        c = sqlite3.connect(vieja)
+        c.executescript(database.SCHEMA.replace(",\n    patente TEXT", ""))
+        c.execute("INSERT INTO eventos (tipo_evento, timestamp, estado_barrera) VALUES ('entrada', '2026-01-01T00:00:00', 'abierta')")
+        c.commit()
+        c.close()
+        antes = config.DB_PATH
+        config.DB_PATH = vieja
+        try:
+            database.init_db()
+            self.assertEqual(len(database.list_events()), 1)
+            self.assertIsNone(database.list_events()[0]["patente"])
+        finally:
+            config.DB_PATH = antes
+
+
+try:
+    import fast_alpr  # noqa: F401
+    HAY_LECTOR = True
+except ImportError:
+    HAY_LECTOR = False
+
+
+@unittest.skipUnless(HAY_LECTOR, "falta fast-alpr: pip install -r requirements.txt")
+class PlatesVideoTest(unittest.TestCase):
+    """Cámara frontal: entran 3 autos con patente y salen en otro orden; cada salida va a su entrada."""
+
+    def test_salidas_emparejadas_por_patente(self):
+        import json
+        from app.demo_plates import generate as generate_plates
+        video = generate_plates(TMP / "frontal.mp4")
+        video.with_suffix(".json").write_text(json.dumps({"patentes": True}))
+        database.init_db()
+        database.reset_events()
+        VideoProcessor(detector_kind="motion").process(video)
+        evs = list(reversed(database.list_events()))
+        self.assertEqual([(e["tipo_evento"], e["patente"]) for e in evs], [
+            ("entrada", "AB123CD"), ("entrada", "ABC123"), ("entrada", "AE905KT"),
+            ("salida", "ABC123"), ("salida", "AB123CD"), ("salida", "AE905KT")])
+        entradas = {e["id"]: e["patente"] for e in evs if e["tipo_evento"] == "entrada"}
+        for s in (e for e in evs if e["tipo_evento"] == "salida"):
+            self.assertEqual(entradas[s["entrada_id"]], s["patente"])
+        self.assertTrue((config.PLATES_DIR / f"{evs[0]['id']}.jpg").exists())
 
 
 REAL_VIDEO = Path(__file__).resolve().parent.parent / "videos" / "calle_real.avi"

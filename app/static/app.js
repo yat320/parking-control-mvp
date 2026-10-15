@@ -7,6 +7,9 @@ const dur = (s) => {
   const m = Math.floor(s / 60), h = Math.floor(m / 60);
   return h ? `${h}h ${String(m % 60).padStart(2, "0")}m` : `${m}m ${String(Math.round(s % 60)).padStart(2, "0")}s`;
 };
+// "AB123CD" -> "AB 123 CD", "ABC123" -> "ABC 123" (como en app/plates.py).
+const chapa = (p) => !p ? "" : /^[A-Z]{2}\d{3}[A-Z]{2}$/.test(p) ? `${p.slice(0, 2)} ${p.slice(2, 5)} ${p.slice(5)}`
+  : /^[A-Z]{3}\d{3}$/.test(p) ? `${p.slice(0, 3)} ${p.slice(3)}` : p;
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 async function api(path, body) {
@@ -36,12 +39,13 @@ async function refrescar() {
       ? (e.detectados ? `AUTO DETECTADO (${e.detectados})` : "procesando…")
       : (e.hay_video_salida ? "video procesado guardado en output/" : "");
     $("error").textContent = e.error || "";
+    $("aviso").textContent = e.aviso || "";
     $("s-entradas").textContent = e.stats.entradas;
     $("s-salidas").textContent = e.stats.salidas;
     $("s-adentro").textContent = e.stats.adentro;
     $("s-recaudado").textContent = money(e.stats.recaudado);
     $("adentro").innerHTML = e.adentro.length
-      ? e.adentro.map((a) => `<li><b>${esc(a.vehicle_id)}</b> desde ${esc(hora(a.timestamp))}</li>`).join("")
+      ? e.adentro.map((a) => `<li><b>${esc(a.patente ? chapa(a.patente) : a.vehicle_id)}</b> desde ${esc(hora(a.timestamp))}</li>`).join("")
       : '<li class="vacio">Ninguno</li>';
     const sel = $("video");
     const nombres = e.videos.map((v) => v.nombre).join("|");
@@ -64,13 +68,14 @@ async function refrescar() {
       <tr>
         <td>${ev.id}</td>
         <td class="tipo-${ev.tipo_evento}">${ev.tipo_evento.toUpperCase()}</td>
+        <td class="patente">${ev.patente ? `<b>${esc(chapa(ev.patente))}</b>` : "—"}${ev.foto ? `<img src="/api/patente/${ev.id}.jpg?t=${ev.id}-${esc(ev.patente)}" alt="Patente ${esc(chapa(ev.patente))}">` : ""}</td>
         <td>${esc(hora(ev.timestamp))}</td>
         <td>${esc(ev.vehicle_id)}</td>
         <td>${ev.tracking_id ?? "—"}</td>
         <td>${esc(ev.estado_barrera)}</td>
         <td>${dur(ev.duracion_seg)}</td>
         <td>${money(ev.monto)}</td>
-      </tr>`).join("") : '<tr><td colspan="8" class="vacio">Sin eventos todavía.</td></tr>';
+      </tr>`).join("") : '<tr><td colspan="9" class="vacio">Sin eventos todavía.</td></tr>';
   } catch (err) {
     $("error").textContent = "Sin conexión con el servidor: " + err.message;
   }
@@ -96,6 +101,7 @@ $("form-subir").onsubmit = (ev) => {
   datos.append("video", archivo);
   datos.append("orientacion", document.querySelector('input[name="orientacion"]:checked').value);
   datos.append("invertir", $("invertir").checked ? "true" : "false");
+  datos.append("patentes", $("patentes").checked ? "true" : "false");
   const msg = $("subir-msg"), barra = $("subida"), btn = $("btn-subir");
   btn.disabled = true;
   msg.textContent = "Subiendo…";

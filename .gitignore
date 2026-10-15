@@ -10,3 +10,4 @@ videos/*.mkv
 videos/calle_real.json
 videos/*.webm
 videos/subido-*.json
+data/patentes/

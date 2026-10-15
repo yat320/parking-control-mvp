@@ -9,6 +9,7 @@ Flujo por frame:
   2. el tracker les asigna un tracking_id estable,
   3. si el centroide de un track pasa de un lado al otro de la línea virtual,
      se registra ENTRADA (hacia abajo) o SALIDA (hacia arriba) en SQLite,
+     con la patente si es una cámara frontal (app/plates.py),
   4. el evento abre la barrera simulada, que se cierra sola a los N segundos,
   5. se dibuja todo sobre el frame y se guarda en el video de salida.
 """
@@ -21,7 +22,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import config, database
+from . import config, database, plates
 from .barrier_controller import OPEN, BarrierController
 from .demo_video import generate as generate_demo_video
 from .detection import create_detector
@@ -33,6 +34,7 @@ MESSAGE_SECONDS = 2.0  # cuánto queda en pantalla "EVENTO REGISTRADO"
 DISPLAY_MIN_WIDTH = 640  # ancho mínimo del video procesado (los más chicos se agrandan)
 
 YELLOW, GREEN, RED, WHITE, BLACK = (0, 220, 255), (60, 200, 60), (40, 40, 230), (255, 255, 255), (0, 0, 0)
+CYAN = (230, 200, 40)
 
 
 def side_of_line(p, a, b) -> int:
@@ -66,7 +68,9 @@ class VideoProcessor:
         self.progress = 0.0
         self.last_message = ""
         self.detected_now = 0
+        self.notice = ""  # aviso para la web (por ejemplo, que no se pueden leer patentes)
         self._stop = threading.Event()
+        self._plate_boxes = []  # patentes vistas en la última lectura, para dibujarlas
 
     # ---------- API ----------
 
@@ -82,8 +86,13 @@ class VideoProcessor:
         reemplazan a los de config.py solo para ese video.
         """
         opts = config.video_settings(Path(video_path), {
-            "line": self.line_rel, "entry_sign": self.entry_sign, "min_area": self.min_area})
+            "line": self.line_rel, "entry_sign": self.entry_sign, "min_area": self.min_area,
+            "plates": config.PLATES})
         line_rel, entry_sign, min_area = opts["line"], opts["entry_sign"], opts["min_area"]
+        reader = plates.create_reader() if opts["plates"] else None
+        self.notice = ("No se pueden leer patentes en este servidor: los autos quedan con número."
+                       if opts["plates"] and reader is None else "")
+        self._plate_boxes = []
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             raise FileNotFoundError(f"No se pudo abrir el video: {video_path}")
@@ -92,8 +101,9 @@ class VideoProcessor:
         w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         # Los videos grandes (celular en 1080p o 4K) se achican antes de todo: la
         # detección, el tracking y el dibujo trabajan sobre el frame achicado.
-        shrink = None
+        shrink, plate_scale = None, 1.0
         if config.PROCESS_MAX_WIDTH and w > config.PROCESS_MAX_WIDTH:
+            plate_scale = config.PROCESS_MAX_WIDTH / w  # las patentes se leen en el original, más nítido
             shrink = (config.PROCESS_MAX_WIDTH, max(1, round(h * config.PROCESS_MAX_WIDTH / w)))
             w, h = shrink
         a = (int(line_rel[0] * w), int(line_rel[1] * h))
@@ -117,13 +127,14 @@ class VideoProcessor:
         self.running = True
         frame_idx, t0 = 0, time.monotonic()
         print(f"[VIDEO] {video_path} {w}x{h} @ {fps:.1f} fps, detector={detector.name}, "
-              f"línea={tuple(line_rel)}, área mínima={min_area}", flush=True)
+              f"línea={tuple(line_rel)}, área mínima={min_area}, patentes={'sí' if reader else 'no'}", flush=True)
 
         try:
             while not self._stop.is_set():
                 ok, frame = cap.read()
                 if not ok:
                     break
+                original = frame
                 if shrink:
                     frame = cv2.resize(frame, shrink, interpolation=cv2.INTER_AREA)
                 video_t = frame_idx / fps
@@ -132,6 +143,13 @@ class VideoProcessor:
                 detections = detector.detect(frame)
                 tracks = tracker.update(detections)
                 self.barrier.update(video_t)
+
+                # Cámara frontal: leer patentes cada N frames, solo si hay autos en cuadro.
+                if reader and frame_idx % config.PLATES_EVERY == 0 and any(not t.missed for t in tracks.values()):
+                    reads = reader.read(original)
+                    plates.assign(reads, tracks, plate_scale)
+                    self._plate_boxes = [(tuple(int(v * plate_scale) for v in r.box), r.text) for r in reads]
+                    self._fill_late_plates(tracks, video_t)
 
                 for tr in tracks.values():
                     if tr.missed:
@@ -149,15 +167,21 @@ class VideoProcessor:
                         # La barrera se abre ANTES de registrar, así el evento guarda "abierta".
                         self.barrier.open(video_t, reason=f"{kind} track {tr.id}")
                         ts = start_wall + timedelta(seconds=video_t * self.time_scale)
+                        plate = tr.plates.best() if reader else None
+                        who = plates.pretty(plate) if plate else None
                         if kind == "entrada":
-                            ev = database.register_entry(ts, tr.id, self.barrier.state)
-                            message = f"EVENTO REGISTRADO: ENTRADA {ev['vehicle_id']}"
+                            ev = database.register_entry(ts, tr.id, self.barrier.state, plate)
+                            message = f"EVENTO REGISTRADO: ENTRADA {who or ev['vehicle_id']}"
                         else:
-                            ev = database.register_exit(ts, tr.id, self.barrier.state)
+                            ev = database.register_exit(ts, tr.id, self.barrier.state, plate)
                             extra = ""
                             if ev["monto"] is not None:
                                 extra = f" {format_duration(ev['duracion_seg'])} ${ev['monto']:.0f}"
-                            message = f"EVENTO REGISTRADO: SALIDA {ev['vehicle_id']}{extra}"
+                            message = f"EVENTO REGISTRADO: SALIDA {who or ev['vehicle_id']}{extra}"
+                        if plate:
+                            save_plate_photo(ev["id"], tr.plates.crop(plate))
+                        elif reader:
+                            tr.pending_plate.append((ev["id"], video_t))  # se completa si se lee enseguida
                         message_until = video_t + MESSAGE_SECONDS
                         ev["video_seg"] = round(video_t, 2)
                         events.append(ev)
@@ -198,6 +222,19 @@ class VideoProcessor:
             print(f"[VIDEO] video procesado: {output_path}", flush=True)
         return events
 
+    @staticmethod
+    def _fill_late_plates(tracks, now: float) -> None:
+        """Eventos que se registraron antes de leerle la patente al auto: se completan ahora,
+        si no pasaron más de PLATES_LATE_SECONDS (después podría ser otro auto con el mismo track)."""
+        for t in tracks.values():
+            t.pending_plate[:] = [(i, s) for i, s in t.pending_plate if now - s <= config.PLATES_LATE_SECONDS]
+            plate = t.plates.best() if t.pending_plate else None
+            if plate:
+                for ev_id, _ in t.pending_plate:
+                    database.set_plate(ev_id, plate)
+                    save_plate_photo(ev_id, t.plates.crop(plate))
+                t.pending_plate.clear()
+
     # ---------- dibujo ----------
 
     def _draw(self, frame: np.ndarray, tracks, a, b, video_t: float, message: str, scale: float = 1.0) -> None:
@@ -234,12 +271,19 @@ class VideoProcessor:
         for t in active:
             d = t.detection
             cv2.rectangle(frame, P((d.x, d.y)), P((d.x + d.w, d.y + d.h)), GREEN, 2)
-            label = f"#{t.id} {d.label}" + (f" {d.confidence:.0%}" if d.confidence < 1 else "")
+            plate = t.plates.best()
+            label = f"#{t.id} " + (plates.pretty(plate) if plate else d.label + (f" {d.confidence:.0%}" if d.confidence < 1 else ""))
             x, y = P((d.x, d.y))
             cv2.putText(frame, label, (x, max(12, y - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, GREEN, 2)
             cv2.circle(frame, P(t.centroid), 4, YELLOW, -1)
             if len(t.history) > 1:
                 cv2.polylines(frame, [np.array([P(p) for p in t.history], np.int32)], False, YELLOW, 1)
+
+        # Patentes vistas en la última lectura.
+        for (x, y, bw, bh), text in self._plate_boxes:
+            cv2.rectangle(frame, P((x, y)), P((x + bw, y + bh)), CYAN, 2)
+            px, py = P((x, y + bh))
+            cv2.putText(frame, text, (px, py + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.5, CYAN, 2)
 
         # Textos de estado (arriba a la izquierda).
         def badge(text, y, color):
@@ -255,6 +299,14 @@ class VideoProcessor:
         cv2.putText(frame, f"t={video_t:5.1f}s", (frame.shape[1] - 90, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, WHITE, 1)
 
 
+def save_plate_photo(event_id: int, crop) -> None:
+    """Guarda el recorte de la patente como data/patentes/<evento>.jpg (lo muestra la web)."""
+    if crop is None or not crop.size:
+        return
+    config.PLATES_DIR.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(config.PLATES_DIR / f"{event_id}.jpg"), crop)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Procesa un video y registra entradas/salidas.")
     parser.add_argument("--video", type=Path, default=config.VIDEO_PATH)
@@ -264,8 +316,11 @@ def main() -> None:
     parser.add_argument("--realtime", action="store_true", help="procesar a la velocidad del video")
     parser.add_argument("--show", action="store_true", help="mostrar ventana (requiere opencv-python, no headless)")
     parser.add_argument("--reset", action="store_true", help="borrar los eventos antes de empezar")
+    parser.add_argument("--patentes", action="store_true", help="cámara frontal: leer patentes")
     args = parser.parse_args()
 
+    if args.patentes:
+        config.PLATES = True
     database.init_db()
     if not args.video.exists() and args.video == config.VIDEO_PATH:
         print(f"No existe {args.video}: genero el video de prueba.")
@@ -275,6 +330,9 @@ def main() -> None:
     proc = VideoProcessor(detector_kind=args.detector)
     events = proc.process(args.video, None if args.no_output else args.output, realtime=args.realtime, show=args.show)
     s = database.stats()
+    for e in reversed(database.list_events(len(events) or 1)):
+        if e.get("patente"):
+            print(f"  {e['tipo_evento']:7} {e['vehicle_id']} patente {plates.pretty(e['patente'])}")
     print(f"\nResumen: {len(events)} eventos en este video | entradas {s['entradas']} | "
           f"salidas {s['salidas']} | adentro {s['adentro']} | recaudado ${s['recaudado']:.2f}")
 

@@ -54,3 +54,6 @@ th { color:var(--muted); font-weight:500; }
 .subir fieldset small { color:var(--muted); }
 .subir input[type=radio], .subir input[type=checkbox] { width:18px; height:18px; margin-top:2px; flex:none; }
 .subir input[type=file] { max-width:100%; color:var(--muted); }
+.patente b { font-family:ui-monospace, Menlo, monospace; letter-spacing:.5px; }
+.patente img { display:block; height:28px; margin-top:4px; border-radius:3px; border:1px solid var(--line); }
+.aviso-proc { color:var(--warn); margin:6px 0 0; }

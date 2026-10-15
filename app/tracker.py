@@ -9,6 +9,7 @@ el resto, siempre que devuelva el mismo dict {id: Track}.
 from dataclasses import dataclass, field
 
 from .detection import Detection
+from .plates import PlateVotes
 
 
 @dataclass
@@ -20,6 +21,8 @@ class Track:
     seen: int = 1        # frames en que se lo vio
     side: int = 0        # de qué lado de la línea está (-1, 0, +1)
     counted: set = field(default_factory=set)  # eventos ya registrados ('entrada'/'salida')
+    plates: PlateVotes = field(default_factory=PlateVotes)  # lecturas de patente (cámara frontal)
+    pending_plate: list = field(default_factory=list)       # eventos registrados antes de leerle la patente
 
     @property
     def centroid(self):

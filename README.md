@@ -15,7 +15,7 @@ Sistema inicial para controlar el ingreso y egreso de autos en una cochera a par
 detecta vehículos, registra entradas y salidas cuando cruzan una línea virtual, simula la
 barrera, calcula la estadía y el monto, guarda todo en SQLite y lo muestra en una web local.
 
-Fuera de alcance en esta etapa: lectura de patentes (OCR), pagos reales y hardware real
+Fuera de alcance en esta etapa: pagos reales y hardware real
 (la barrera está simulada, con un punto de enganche para conectarla después).
 
 ## Usarlo online con un link fijo (Render)
@@ -61,6 +61,30 @@ procesar**: se sube con barra de progreso y arranca solo.
 - Los videos de más de 640 px de ancho se achican antes de detectar (`PARKING_MAX_WIDTH`), así un
   video de celular en 1080p no tarda una eternidad en un servidor chico.
 - Si un video de iPhone no se puede leer: Ajustes → Cámara → Formatos → *Más compatible*.
+
+## Leer patentes (cámara frontal)
+
+Con una cámara mirando el frente de los autos en la barrera, cada evento guarda la patente
+(`AB 123 CD` o `ABC 123`) y la foto recortada, y **la salida se cobra a la entrada de esa misma
+patente**, no a la más vieja. En la web: tildar **Es la cámara frontal: leer las patentes** al
+subir el video. Por consola: `python -m app.video_processor --video X.mp4 --patentes`. En un
+`.json` de video: `"patentes": true`. Para todos los videos: `PARKING_PLATES=1`.
+
+- Usa [fast-alpr](https://github.com/ankandrew/fast-alpr) (detector YOLO + OCR en ONNX, sin GPU,
+  ~30 ms por cuadro). Los modelos se bajan la primera vez (en Docker, al armar la imagen).
+- Lee cada 3 cuadros mientras hay autos (`PARKING_PLATES_EVERY`), le da cada lectura al auto que la
+  contiene y decide con sus últimas 6 lecturas (`PARKING_PLATES_WINDOW`), pesadas por confianza.
+  Solo acepta formato argentino; una lectura como `AB123C` no cuenta.
+- Si el auto cruza antes de que se le lea la chapa, el evento se completa si se la lee en los 3 s
+  siguientes (`PARKING_PLATES_LATE`). Si no se lee, queda con su número (`V0003`) como antes.
+- Una salida con patente sin entrada de esa patente se empareja con una entrada que no tenga
+  patente leída; nunca con la de otra patente.
+- `python -m app.demo_plates` arma un video de prueba (patentes dibujadas): entran 3 autos y salen
+  en otro orden. Sirve para probar el circuito, no para medir cuánto acierta con chapas reales.
+- El detector encuentra mejor las chapas que ocupan alrededor del 10% del ancho de la imagen:
+  la cámara no tiene que estar pegada al auto.
+- Las patentes son datos personales (ley 25.326): en un uso real, cartel de zona filmada y borrar
+  los registros viejos.
 
 ## Usarlo desde GitHub, sin instalar nada
 
@@ -224,7 +248,10 @@ video ──> detector ──> tracker ──> ¿cruzó la línea? ──> barre
 | `app/tracker.py` | Tracker por centroides: le da un `tracking_id` estable a cada auto. |
 | `app/barrier_controller.py` | Barrera simulada: abierta/cerrada, se cierra sola a los N segundos. |
 | `app/pricing.py` | Tarifa: se cobra por fracción iniciada, mínimo una. |
-| `app/database.py` | SQLite: tabla `eventos` y tabla `config` (tarifa). |
+| `app/database.py` | SQLite: tabla `eventos` (con la patente) y tabla `config` (tarifa). |
+| `app/plates.py` | Patentes: lector (fast-alpr), formato argentino y votos por auto. |
+| `app/demo_plates.py` | Video de prueba de cámara frontal, con patentes dibujadas. |
+| `app/uploads.py` | Videos subidos desde la web: validar, guardar con su línea y recortar. |
 | `app/demo_video.py` | Genera el video sintético de prueba. |
 | `app/config.py` | Configuración por variables de entorno. |
 
@@ -335,9 +362,10 @@ ByteTrack (`model.track(...)` de ultralytics): solo tiene que devolver el mismo 
 | GET | `/` | panel web |
 | GET | `/video_feed` | video procesado en vivo (MJPEG) |
 | GET | `/api/estado` | barrera, contadores, autos adentro, tarifa, progreso |
-| GET | `/api/eventos?limit=50` | últimos eventos |
+| GET | `/api/eventos?limit=50` | últimos eventos (con `patente` y `foto`) |
+| GET | `/api/patente/{id}.jpg` | foto recortada de la patente de un evento |
 | POST | `/api/procesar` | `{"guardar_video": true, "video": "nombre"}` arranca el procesamiento |
-| POST | `/api/subir` | form `video` (archivo), `orientacion` (`horizontal`/`vertical`), `invertir`: sube un video propio |
+| POST | `/api/subir` | form `video` (archivo), `orientacion` (`horizontal`/`vertical`), `invertir`, `patentes`: sube un video propio |
 | POST | `/api/detener` | corta el procesamiento |
 | POST | `/api/tarifa` | `{"tarifa_hora": 1000, "fraccion_min": 15}` |
 | POST | `/api/barrera/abrir` | apertura manual |
@@ -350,5 +378,6 @@ Documentación interactiva: http://localhost:8000/docs
 1. Probar con video real de la cochera y ajustar `PARKING_LINE` y `PARKING_MIN_AREA`.
 2. Cámara en vivo: `cv2.VideoCapture("rtsp://usuario:clave@ip/stream")` en lugar del archivo.
 3. YOLO + ByteTrack para descartar personas y autos quietos.
-4. OCR de patentes para emparejar entrada y salida por patente.
+4. Probar la lectura de patentes con video real de la cámara frontal y elegir el modelo de OCR
+   (`PARKING_PLATES_OCR`: `cct-xs-v1-global-model` o `argentinian-plates-cnn-model`).
 5. Barrera real en `_actuate()` y cobro real.

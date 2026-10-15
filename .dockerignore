@@ -12,3 +12,4 @@ videos/*.mov
 videos/*.mkv
 videos/*.webm
 videos/subido-*
+data/patentes
