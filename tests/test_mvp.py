@@ -329,6 +329,18 @@ class PairingTest(unittest.TestCase):
         self.assertEqual((salida["vehicle_id"], salida["duracion_seg"]), ("V0002", 15 * 60))
         self.assertEqual([a["patente"] for a in database.list_inside()], ["AB123CD"])
 
+    def test_salida_sin_patente_va_a_entrada_sin_patente(self):
+        from datetime import datetime, timedelta
+        database.init_db()
+        database.reset_events()
+        t0 = datetime(2026, 10, 15, 10, 0)
+        database.register_entry(t0, 1, "abierta", "AB123CD")
+        database.register_entry(t0 + timedelta(minutes=5), 2, "abierta", None)   # la frontal no la leyó
+        s = database.register_exit(t0 + timedelta(minutes=20), 3, "abierta", None)
+        self.assertEqual(s["vehicle_id"], "V0002")             # no le quita la entrada a AB123CD
+        s = database.register_exit(t0 + timedelta(minutes=25), 4, "abierta", "AB123CD")
+        self.assertEqual(s["vehicle_id"], "V0001")
+
     def test_subir_par(self):
         import io
         import json

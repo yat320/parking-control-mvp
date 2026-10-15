@@ -121,7 +121,8 @@ def register_exit(ts: datetime, tracking_id: int, barrier_state: str, patente: s
 
     Con patente: la entrada abierta de esa patente (o la única que difiere en una letra);
     si no hay, la más vieja de las que entraron sin patente leída (nunca la de otra
-    patente). Sin patente: la más vieja (FIFO).
+    patente). Sin patente: la más vieja de las que tampoco tienen patente (las que sí
+    tienen las espera su propia salida); si no hay, la más vieja (FIFO).
     """
     pricing = get_pricing()
     with connect() as conn:
@@ -131,7 +132,8 @@ def register_exit(ts: datetime, tracking_id: int, barrier_state: str, patente: s
             if entry is None:
                 entry = conn.execute(OPEN_ENTRIES + " AND e.patente IS NULL ORDER BY e.id LIMIT 1").fetchone()
         else:
-            entry = conn.execute(OPEN_ENTRIES + " ORDER BY e.id LIMIT 1").fetchone()
+            entry = (conn.execute(OPEN_ENTRIES + " AND e.patente IS NULL ORDER BY e.id LIMIT 1").fetchone()
+                     or conn.execute(OPEN_ENTRIES + " ORDER BY e.id LIMIT 1").fetchone())
         monto = duracion = entrada_id = None
         vehicle_id = "sin-entrada"
         if entry:

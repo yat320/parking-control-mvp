@@ -27,7 +27,7 @@ ENTRY_DIRECTION = os.getenv("PARKING_ENTRY_DIRECTION", "down")
 
 # Para contar un cruce, el auto tiene que venir avanzando hacia ese lado al menos esta fracción
 # del ancho del cuadro en sus últimos cuadros (descarta saltos del centro de la mancha).
-CROSS_MIN_TRAVEL = float(os.getenv("PARKING_CROSS_MIN_TRAVEL", "0.03"))
+CROSS_MIN_TRAVEL = float(os.getenv("PARKING_CROSS_MIN_TRAVEL", "0.02"))
 
 # Segundos que la barrera queda abierta después de un evento.
 BARRIER_OPEN_SECONDS = float(os.getenv("PARKING_BARRIER_SECONDS", "3"))
