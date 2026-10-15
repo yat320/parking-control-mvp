@@ -25,6 +25,10 @@ LINE = tuple(float(v) for v in os.getenv("PARKING_LINE", "0.05,0.55,0.95,0.55").
 # Con "up" se invierte (si la cámara mira al revés).
 ENTRY_DIRECTION = os.getenv("PARKING_ENTRY_DIRECTION", "down")
 
+# Para contar un cruce, el auto tiene que venir avanzando hacia ese lado al menos esta fracción
+# del ancho del cuadro en sus últimos cuadros (descarta saltos del centro de la mancha).
+CROSS_MIN_TRAVEL = float(os.getenv("PARKING_CROSS_MIN_TRAVEL", "0.03"))
+
 # Segundos que la barrera queda abierta después de un evento.
 BARRIER_OPEN_SECONDS = float(os.getenv("PARKING_BARRIER_SECONDS", "3"))
 
@@ -62,8 +66,10 @@ PLATES_DETECTOR = os.getenv("PARKING_PLATES_DETECTOR", "yolo-v9-t-640-license-pl
 PLATES_OCR = os.getenv("PARKING_PLATES_OCR", "argentinian-plates-cnn-synth-model")
 # Dos cámaras (la de la barrera cuenta, la frontal lee patentes): cuándo una patente vista
 # por la frontal corresponde a un evento de la barrera.
-PAIR_BEFORE = float(os.getenv("PARKING_PAIR_BEFORE", "5"))   # vista hasta 5 s antes del evento
-PAIR_AFTER = float(os.getenv("PARKING_PAIR_AFTER", "2"))     # o hasta 2 s después
+# Con la frontal más afuera, el auto se ve hasta ~10 s antes de cruzar (frena, espera la barrera
+# y arranca); el que sale se ve recién después de cruzar, alejándose.
+PAIR_BEFORE = float(os.getenv("PARKING_PAIR_BEFORE", "15"))  # vista hasta 15 s antes del evento
+PAIR_AFTER = float(os.getenv("PARKING_PAIR_AFTER", "4"))     # o hasta 4 s después
 PAIR_GAP_SECONDS = float(os.getenv("PARKING_PAIR_GAP", "2"))  # lecturas a menos de esto son la misma pasada
 # Si la chapa crece más que esto (o se achica), el auto se acerca (o se aleja) de la frontal.
 # Una entrada no se lleva una chapa que se aleja ni una salida una que se acerca. 0 = no mirar.

@@ -49,6 +49,17 @@ def side_of_line(p, a, b) -> int:
     return 1 if cross > 0 else -1 if cross < 0 else 0
 
 
+def travel_toward(history, a, b, side: int) -> float:
+    """Cuánto avanzó el auto (en px) hacia el lado `side` de la recta a->b en sus últimos centroides."""
+    if len(history) < 2:
+        return 0.0
+    (ax, ay), (bx, by) = a, b
+    nx, ny = -(by - ay), bx - ax                  # normal que apunta al lado +1 (ver side_of_line)
+    norm = (nx * nx + ny * ny) ** 0.5 or 1.0
+    (x0, y0), (x1, y1) = history[0], history[-1]
+    return side * ((x1 - x0) * nx + (y1 - y0) * ny) / norm
+
+
 class VideoProcessor:
     def __init__(self, barrier: BarrierController | None = None, detector_kind: str = config.DETECTOR,
                  line=config.LINE, entry_direction: str = config.ENTRY_DIRECTION,
@@ -111,6 +122,7 @@ class VideoProcessor:
             plate_scale = config.PROCESS_MAX_WIDTH / w  # las patentes se leen en el original, más nítido
             shrink = (config.PROCESS_MAX_WIDTH, max(1, round(h * config.PROCESS_MAX_WIDTH / w)))
             w, h = shrink
+        min_travel = config.CROSS_MIN_TRAVEL * max(w, h)  # px que tiene que venir avanzando al cruzar
         a = (int(line_rel[0] * w), int(line_rel[1] * h))
         b = (int(line_rel[2] * w), int(line_rel[3] * h))
         # Los videos chicos (cámaras viejas, 320 px) se agrandan solo para dibujar,
@@ -170,8 +182,11 @@ class VideoProcessor:
                     if side == 0:
                         continue
                     prev, tr.side = tr.side, side
-                    # Cruce: el lado cambió y el vehículo es "válido" (visto varios frames).
-                    if prev != 0 and prev != side and tr.seen >= MIN_SEEN_FRAMES:
+                    # Cruce: el lado cambió, el vehículo es "válido" (visto varios frames) y viene
+                    # avanzando hacia ese lado (no es un salto del centro, por ejemplo cuando el
+                    # brazo de la barrera se pega a la mancha del auto).
+                    if prev != 0 and prev != side and tr.seen >= MIN_SEEN_FRAMES \
+                            and travel_toward(tr.history, a, b, side) >= min_travel:
                         kind = "entrada" if side == entry_sign else "salida"
                         if kind in tr.counted:
                             continue

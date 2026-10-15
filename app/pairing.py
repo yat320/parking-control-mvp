@@ -85,10 +85,11 @@ class PlateTimeline:
         """La patente que mejor corresponde a un evento a los t segundos (y la marca como usada).
 
         Cuentan las vistas entre PAIR_BEFORE segundos antes y PAIR_AFTER después del evento,
-        con puntaje suficiente; gana la más cercana en el tiempo y, si varias se estaban viendo
-        justo en ese momento, la que apareció primero: los autos pasan en fila, así que el
-        primero que vio la frontal es el primero que llega a la barrera. Una patente se usa una
-        sola vez por pasada.
+        con puntaje suficiente, y gana la que apareció primero: los autos pasan en fila, así
+        que el primero que vio la frontal y todavía no se usó es el que está cruzando. Eso
+        sirve con la frontal pegada a la barrera (ve al auto mientras cruza) y con la frontal
+        más afuera (lo ve llegar varios segundos antes, mientras el siguiente ya se acerca).
+        Una patente se usa una sola vez por pasada.
 
         Con `kind` ('entrada' o 'salida'), no se le da a una entrada una chapa que se ve
         alejarse ni a una salida una que se ve acercarse: con un carril de cada lado, la
@@ -103,7 +104,7 @@ class PlateTimeline:
                  and not (wrong and s.trend() == wrong)]
         if not cands:
             return None
-        best = min(cands, key=lambda s: (s.distance(t), s.first))
+        best = min(cands, key=lambda s: s.first)
         best.used = True
         return best
 
