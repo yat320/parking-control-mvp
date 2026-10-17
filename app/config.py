@@ -34,6 +34,10 @@ BARRIER_OPEN_SECONDS = float(os.getenv("PARKING_BARRIER_SECONDS", "3"))
 
 # Área mínima (en píxeles) de un blob para considerarlo vehículo.
 MIN_AREA = int(os.getenv("PARKING_MIN_AREA", "2500"))
+# Memoria del fondo del detector de movimiento, en segundos de video. Un vehículo quieto
+# pasa a ser fondo después de ~1/10 de esto: con 150, a los ~15 s (el que espera la
+# barrera o saca el ticket no desaparece).
+BG_SECONDS = float(os.getenv("PARKING_FONDO_SEGUNDOS", "150"))
 
 # Escala de tiempo de la demo: cuántos segundos "reales" de estadía representa
 # cada segundo de video. Con 60, un auto que entra y sale 20 s después en el

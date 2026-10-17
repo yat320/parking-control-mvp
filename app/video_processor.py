@@ -135,7 +135,7 @@ class VideoProcessor:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             writer = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, out_size)
 
-        detector = create_detector(self.detector_kind, min_area)
+        detector = create_detector(self.detector_kind, min_area, fps)
         tracker = CentroidTracker(max_distance=max(w, h) * 0.2)
         self.barrier.reset()
         start_wall = datetime.now()  # hora "real" que corresponde al segundo 0 del video

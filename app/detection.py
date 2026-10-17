@@ -41,18 +41,22 @@ class MotionDetector(BaseDetector):
       2. se limpia el ruido con apertura y se unen partes del auto con cierre,
       3. cada contorno con área >= min_area es un vehículo candidato.
 
+    El fondo aprende despacio (`history`): con lo que trae OpenCV (500 frames) un
+    auto quieto unos 2,5 s pasaba a ser fondo, así que el que esperaba la barrera
+    desaparecía y al arrancar aparecía como otro, justo sobre la línea.
+
     Limitaciones conocidas: una persona o un perro grande también cuentan si
-    superan el área mínima; un auto que se queda quieto mucho tiempo termina
-    siendo "fondo". Para el MVP alcanza; YOLO resuelve ambas cosas.
+    superan el área mínima; un auto que se queda quieto mucho tiempo (más de
+    ~15 s) termina siendo "fondo". Para el MVP alcanza; YOLO resuelve ambas cosas.
     """
 
     name = "motion"
 
-    def __init__(self, min_area: int = 2500, warmup_frames: int = 25):
+    def __init__(self, min_area: int = 2500, warmup_frames: int = 25, history: int = 500):
         self.min_area = min_area
         self.warmup_frames = warmup_frames
         self.frames = 0
-        self.subtractor = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=40, detectShadows=True)
+        self.subtractor = cv2.createBackgroundSubtractorMOG2(history=history, varThreshold=40, detectShadows=True)
         self.kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         self.kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
         self.last_mask = None  # se guarda para depurar
@@ -109,9 +113,10 @@ class YoloDetector(BaseDetector):
         return detections
 
 
-def create_detector(kind: str, min_area: int = 2500) -> BaseDetector:
+def create_detector(kind: str, min_area: int = 2500, fps: float = 25.0) -> BaseDetector:
     if kind == "yolo":
         return YoloDetector()
     if kind == "motion":
-        return MotionDetector(min_area=min_area)
+        from app import config
+        return MotionDetector(min_area=min_area, history=max(500, round(config.BG_SECONDS * fps)))
     raise ValueError(f"Detector desconocido: {kind!r} (usar 'motion' o 'yolo')")
