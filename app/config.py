@@ -38,6 +38,9 @@ MIN_AREA = int(os.getenv("PARKING_MIN_AREA", "2500"))
 # pasa a ser fondo después de ~1/10 de esto: con 150, a los ~15 s (el que espera la
 # barrera o saca el ticket no desaparece).
 BG_SECONDS = float(os.getenv("PARKING_FONDO_SEGUNDOS", "150"))
+# Mientras hay un vehículo, el fondo no lo aprende, como mucho estos segundos seguidos
+# (después, algo que se quedó quieto para siempre pasa al fondo igual).
+STILL_SECONDS = float(os.getenv("PARKING_QUIETO_SEGUNDOS", "20"))
 
 # Escala de tiempo de la demo: cuántos segundos "reales" de estadía representa
 # cada segundo de video. Con 60, un auto que entra y sale 20 s después en el
