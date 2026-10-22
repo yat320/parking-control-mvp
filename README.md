@@ -45,6 +45,23 @@ Hugging Face Spaces también la corre, pero desde octubre de 2026 los Spaces con
 suscripción PRO. Con PRO: secreto `HF_TOKEN` (token de escritura) en **Settings → Secrets and
 variables → Actions**, y **Actions → Publicar en Hugging Face → Run workflow**.
 
+## Jugar al simulador
+
+En la web, **🎮 Jugar al simulador** (o `/juego`): vos manejás los autos. **Entra un auto** hace
+entrar uno; cuando termina de pasar aparece en *Estacionados* y tocándolo sale. Al final,
+**Terminar y mandar al sistema** convierte la partida en un video de cámara cenital (el mismo dibujo
+que el video de prueba), lo procesa el detector de verdad y muestra, salida por salida, cuánto
+**debía cobrar** y cuánto **cobró el sistema**, con la estadía de cada uno.
+
+- 1 s de juego = 1 minuto de estadía (`PARKING_TIME_SCALE`). Hasta 120 s y 40 autos por partida.
+- Entre dos autos del mismo carril tienen que pasar 2 s: con menos, el detector de movimiento los
+  junta y cuenta uno solo. **Permitir autos pegados** deja colarse a 1 s, para ver esa falla.
+- Si sale un auto que no era el primero en entrar, sin patentes el sistema le cobra la salida al
+  más viejo: el juego lo marca aunque el monto coincida de casualidad.
+- Para que las cuentas den, si quedaron autos adentro de otra prueba se borran los eventos antes de
+  procesar. Se guardan las últimas 3 partidas en `videos/juego-*.mp4`.
+- Teclado: `E` entra un auto, `1` a `9` saca al de ese lugar de la lista.
+
 ## Probar con tu video
 
 En la web, debajo del video, **Probar con tu video**: desde el celular se elige un video de la

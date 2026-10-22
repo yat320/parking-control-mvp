@@ -15,6 +15,9 @@ Rutas:
   POST /api/tarifa        {"tarifa_hora": 1000, "fraccion_min": 15}
   POST /api/barrera/abrir apertura manual (como el botón de la cabina)
   POST /api/reset         borra los eventos y cierra la barrera
+  GET  /juego             simulador jugable: manejás los autos y la partida se procesa
+  POST /api/juego         {"autos": [{"color": "#c83232", "entra": 1.0, "sale": 12.5}, ...]}
+                          arma el video de la partida en videos/ y devuelve su nombre
 """
 import json
 import threading
@@ -29,7 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from . import config, database, uploads
+from . import config, database, juego, uploads
 from .barrier_controller import BarrierController
 from .demo_video import generate as generate_demo_video
 from .video_processor import VideoProcessor
@@ -129,6 +132,14 @@ def video_feed():
     return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
+@app.get("/juego", response_class=HTMLResponse)
+def pagina_juego(request: Request):
+    return templates.TemplateResponse(request, "juego.html", {
+        "time_scale": config.TIME_SCALE,
+        "constantes": juego.constants(),
+    })
+
+
 # ---------- API ----------
 
 @app.get("/api/estado")
@@ -204,6 +215,26 @@ def subir(request: Request, video: UploadFile = File(...), orientacion: str = Fo
                             frontal=frontal.file if con_frontal else None,
                             frontal_name=frontal.filename if con_frontal else None, desfase=desfase)
     except uploads.UploadError as e:
+        raise HTTPException(400, str(e))
+    return {"nombre": name}
+
+
+class AutoJuego(BaseModel):
+    color: str = "#c83232"
+    entra: float
+    sale: float | None = None
+
+
+class JuegoIn(BaseModel):
+    autos: list[AutoJuego]
+
+
+@app.post("/api/juego")
+def guardar_juego(body: JuegoIn):
+    """Convierte la partida en un video de cámara cenital; después se procesa con /api/procesar."""
+    try:
+        name = juego.save([a.model_dump() for a in body.autos])
+    except juego.JuegoError as e:
         raise HTTPException(400, str(e))
     return {"nombre": name}
 

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulador de cochera</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%232f81f7%22/%3E%3Ctext x=%228%22 y=%2212.5%22 font-size=%2212%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22 font-weight=%22bold%22%3EP%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Simulador de cochera <small>jugá y probá el sistema</small></h1>
+    <a class="boton" href="/">← Panel</a>
+  </header>
+
+  <section class="intro">
+    <p><b>Vos manejás los autos.</b> Hacé entrar autos, dejalos un rato y elegí cuál sale tocándolo en la
+      lista. Cuando termines, la partida se convierte en un video de cámara y la procesa el detector de verdad:
+      al final ves si el sistema cobró lo que tenía que cobrar.</p>
+    <p class="aviso">1 segundo de juego = {{ time_scale|int }} segundos de estadía (con 60: un minuto). La partida
+      dura como mucho {{ constantes.max_seg }} s.</p>
+  </section>
+
+  <main class="juego">
+    <section class="card">
+      <div class="video-box">
+        <canvas id="cancha" width="{{ constantes.ancho }}" height="{{ constantes.alto }}"></canvas>
+        <img id="feed" alt="Video procesado por el sistema" hidden>
+      </div>
+      <div class="progress"><div id="progreso"></div></div>
+
+      <div id="controles">
+        <div class="acciones">
+          <button id="btn-entra" class="primario grande">🚗 Entra un auto</button>
+          <button id="btn-terminar" disabled>Terminar y mandar al sistema</button>
+          <span class="reloj"><b id="reloj">0:00</b> <small id="hora-sim"></small></span>
+        </div>
+        <h2 class="est-titulo">Estacionados <small class="meta">tocá uno para que salga</small></h2>
+        <ul id="estacionados" class="autos"><li class="vacio">Todavía no entró nadie.</li></ul>
+        <label class="check"><input type="checkbox" id="colar">
+          <span>Permitir autos pegados <small>(uno se cuela atrás de otro sin esperar los 2 s: prueba de colado)</small></span></label>
+        <p id="msg" class="meta" aria-live="polite">Tocá <b>Entra un auto</b> (o la tecla E) para empezar.</p>
+      </div>
+      <p id="estado-proc" class="meta" aria-live="polite"></p>
+      <p id="error" class="error"></p>
+    </section>
+
+    <section class="card">
+      <h2>Ya salieron</h2>
+      <ul id="salieron" class="autos"><li class="vacio">Nadie todavía.</li></ul>
+      <h2>Cómo se juega</h2>
+      <ul class="ayuda">
+        <li>Tarifa: <b id="tarifa">—</b> (se cambia en el panel).</li>
+        <li>Entre auto y auto del mismo carril tienen que pasar 2 s, como con una barrera de verdad.</li>
+        <li>Con teclado: <b>E</b> hace entrar un auto, <b>1</b> a <b>9</b> saca al de ese lugar de la lista.</li>
+        <li>Probá sacar uno que no sea el primero en entrar, o colarte atrás de otro: son las fallas que hay que conocer antes de instalarlo.</li>
+      </ul>
+    </section>
+
+    <section id="resultado" class="card ancho" hidden>
+      <h2>¿Cobró bien el sistema?</h2>
+      <div class="stats cuatro" id="conteo"></div>
+      <div class="tabla">
+        <table>
+          <thead><tr><th>Salida</th><th>Auto que salió</th><th>Estadía real</th><th>Debía cobrar</th>
+            <th>Estadía del sistema</th><th>Cobró</th><th></th></tr></thead>
+          <tbody id="comparacion"></tbody>
+        </table>
+      </div>
+      <p id="conclusion" class="meta"></p>
+      <div class="acciones"><button id="btn-otra" class="primario">Jugar otra partida</button>
+        <a class="boton" href="/">Ver eventos en el panel</a></div>
+    </section>
+  </main>
+
+  <script>
+    const C = {{ constantes|tojson }};
+    const ESCALA = {{ time_scale }};
+  </script>
+  <script src="/static/juego.js"></script>
+</body>
+</html>

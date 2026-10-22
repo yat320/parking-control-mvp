@@ -394,5 +394,51 @@ class RealVideoTest(unittest.TestCase):
         self.assertEqual([e["tipo_evento"] for e in events], ["entrada"] * 5)
 
 
+class JuegoTest(unittest.TestCase):
+    """El simulador jugable (/juego): la partida se convierte en video y la procesa el detector."""
+
+    def test_valida_la_partida(self):
+        from app import juego
+        with self.assertRaises(juego.JuegoError):
+            juego.build_schedule([])
+        with self.assertRaises(juego.JuegoError):  # sale antes de terminar de entrar
+            juego.build_schedule([{"color": "#c83232", "entra": 5, "sale": 6}])
+        with self.assertRaises(juego.JuegoError):
+            juego.build_schedule([{"color": "rojo", "entra": 1}])
+        with self.assertRaises(juego.JuegoError):  # más largo que el máximo
+            juego.build_schedule([{"color": "#c83232", "entra": juego.MAX_SECONDS}])
+        schedule, seconds = juego.build_schedule([{"color": "#ff0000", "entra": 1, "sale": 12}])
+        self.assertEqual(schedule[0][2], (0, 0, 255))  # pasa a BGR
+        self.assertAlmostEqual(seconds, 12 + juego.TAIL_SECONDS)
+
+    def test_partida_cobra_lo_que_se_jugo(self):
+        """4 autos con colores claros y grises; salen en orden de llegada: el cobro tiene que dar exacto."""
+        from app import juego
+        autos = [{"color": "#9a9a9a", "entra": 1.0, "sale": 14.0},
+                 {"color": "#e1e1e1", "entra": 3.2, "sale": 20.0},
+                 {"color": "#e6c31e", "entra": 9.0, "sale": 27.0},
+                 {"color": "#2e9e46", "entra": 15.0}]
+        name = juego.save(autos, folder=TMP / "juego")
+        database.init_db()
+        database.reset_events()
+        database.set_pricing(1000, 15)
+        events = VideoProcessor(detector_kind="motion", time_scale=60).process(TMP / "juego" / name, None)
+        self.assertEqual(sum(e["tipo_evento"] == "entrada" for e in events), 4)
+        salidas = sorted((e for e in database.list_events() if e["tipo_evento"] == "salida"), key=lambda e: e["id"])
+        self.assertEqual(len(salidas), 3)
+        for a, s in zip(autos, salidas):  # misma cuenta que hace juego.js
+            real = (a["sale"] + juego.crossing_offset("up") - a["entra"] - juego.crossing_offset("down")) * 60
+            self.assertLess(abs(s["duracion_seg"] - real), 30)
+            self.assertEqual(s["monto"], calculate_amount(real, 1000, 15))
+
+    def test_guarda_solo_las_ultimas(self):
+        from app import juego
+        folder = TMP / "juego-prune"
+        for _ in range(juego.KEEP + 2):
+            juego.save([{"color": "#c83232", "entra": 0}], folder=folder)
+        self.assertEqual(len(list(folder.glob("juego-*.mp4"))), juego.KEEP)
+        self.assertEqual(len(list(folder.glob("juego-*.json"))), juego.KEEP)
+
+
 if __name__ == "__main__":
     unittest.main()
