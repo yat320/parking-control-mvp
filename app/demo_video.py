@@ -33,6 +33,30 @@ SCHEDULE = [
 ]
 
 
+class SensorNoise:
+    """Ruido de sensor precalculado: un banco de cuadros de ruido que se va rotando.
+
+    Calcularlo cuadro por cuadro era lo más lento de armar un video (en un servidor
+    chico, minutos). Con el banco, sumar el ruido son dos operaciones saturadas de OpenCV.
+    """
+
+    def __init__(self, rng: np.random.Generator, shape, sigma: float, frames: int = 48):
+        self.bank = []
+        for _ in range(frames):
+            n = np.rint(rng.normal(0, sigma, shape))
+            self.bank.append((np.clip(n, 0, 255).astype(np.uint8), np.clip(-n, 0, 255).astype(np.uint8)))
+
+    def apply(self, frame: np.ndarray, i: int, offset: float = 0.0) -> np.ndarray:
+        pos, neg = self.bank[i % len(self.bank)]
+        frame = cv2.subtract(cv2.add(frame, pos), neg)
+        k = int(round(offset))
+        if k > 0:
+            frame = cv2.add(frame, np.full_like(frame, k))
+        elif k < 0:
+            frame = cv2.subtract(frame, np.full_like(frame, -k))
+        return frame
+
+
 def make_background(rng: np.random.Generator) -> np.ndarray:
     bg = np.full((H, W, 3), (70, 110, 60), np.uint8)  # pasto
     cv2.rectangle(bg, (170, 0), (470, H), (85, 85, 85), -1)  # asfalto
@@ -71,6 +95,7 @@ def generate(out: Path, seconds: float, seed: int = 7, schedule=None) -> None:
     bg = make_background(rng)
     out.parent.mkdir(parents=True, exist_ok=True)
     writer = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"mp4v"), FPS, (W, H))
+    noise = SensorNoise(rng, (H, W, 3), 3)
     for i in range(int(seconds * FPS)):
         t = i / FPS
         frame = bg.copy()
@@ -86,10 +111,7 @@ def generate(out: Path, seconds: float, seed: int = 7, schedule=None) -> None:
             if -CAR_H < cy < H + CAR_H:
                 draw_car(frame, cx, cy, color, direction == "down")
         # Ruido de sensor + leve cambio de brillo, como una cámara barata.
-        flicker = 3 * np.sin(t * 1.3)
-        noise = rng.normal(flicker, 3, frame.shape).astype(np.int16)
-        frame = np.clip(frame.astype(np.int16) + noise, 0, 255).astype(np.uint8)
-        writer.write(frame)
+        writer.write(noise.apply(frame, i, 3 * np.sin(t * 1.3)))
     writer.release()
     print(f"Video generado: {out} ({seconds:.0f} s, {W}x{H} @ {FPS} fps, "
           f"{sum(1 for s in schedule if s[1] == 'down')} entradas y {sum(1 for s in schedule if s[1] == 'up')} salidas)")

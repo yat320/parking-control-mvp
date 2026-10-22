@@ -53,13 +53,21 @@ entrar uno; cuando termina de pasar aparece en *Estacionados* y tocándolo sale.
 que el video de prueba), lo procesa el detector de verdad y muestra, salida por salida, cuánto
 **debía cobrar** y cuánto **cobró el sistema**, con la estadía de cada uno.
 
+- **Cámara frontal** (tildada por defecto): cada auto lleva una patente argentina al azar y abajo
+  de la cancha se ve la cámara frontal en vivo. Se arman los dos videos (barrera + frontal, como en
+  *Dos cámaras*) y la tabla muestra la patente de cada auto y la que leyó el sistema. En la frontal
+  el que entra viene por la izquierda y crece, y el que sale va por la derecha y se achica: así el
+  sistema separa a uno que entra de otro que sale al mismo tiempo. Leer patentes es lento en un
+  servidor chico (Render gratis): procesar puede tardar varias veces lo que duró la partida.
 - 1 s de juego = 1 minuto de estadía (`PARKING_TIME_SCALE`). Hasta 120 s y 40 autos por partida.
 - Entre dos autos del mismo carril tienen que pasar 2 s: con menos, el detector de movimiento los
   junta y cuenta uno solo. **Permitir autos pegados** deja colarse a 1 s, para ver esa falla.
 - Si sale un auto que no era el primero en entrar, sin patentes el sistema le cobra la salida al
   más viejo: el juego lo marca aunque el monto coincida de casualidad.
 - Para que las cuentas den, si quedaron autos adentro de otra prueba se borran los eventos antes de
-  procesar. Se guardan las últimas 3 partidas en `videos/juego-*.mp4`.
+  procesar. Se guardan las últimas 3 partidas en `videos/juego-*.mp4` (con su `-frontal.mp4`).
+  Los videos se escriben con un nombre oculto (`.juego-...`) y se renombran al terminar: un video a
+  medio armar no aparece en la lista (no se podría abrir).
 - Teclado: `E` entra un auto, `1` a `9` saca al de ese lugar de la lista.
 
 ## Probar con tu video

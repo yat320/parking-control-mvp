@@ -16,7 +16,8 @@ Rutas:
   POST /api/barrera/abrir apertura manual (como el botón de la cabina)
   POST /api/reset         borra los eventos y cierra la barrera
   GET  /juego             simulador jugable: manejás los autos y la partida se procesa
-  POST /api/juego         {"autos": [{"color": "#c83232", "entra": 1.0, "sale": 12.5}, ...]}
+  POST /api/juego         {"autos": [{"color": "#c83232", "entra": 1.0, "sale": 12.5, "patente": "AB123CD"}, ...],
+                           "patentes": true}  (con patentes arma también la cámara frontal)
                           arma el video de la partida en videos/ y devuelve su nombre
 """
 import json
@@ -70,7 +71,7 @@ def _list_videos() -> list[dict]:
     folder = config.VIDEO_PATH.parent
     videos, frontales = [], set()
     for p in sorted(folder.iterdir()) if folder.exists() else []:
-        if p.suffix.lower() not in VIDEO_EXTS:
+        if p.suffix.lower() not in VIDEO_EXTS or p.name.startswith("."):  # ".x.mp4": a medio escribir
             continue
         desc = ""
         if p.with_suffix(".json").exists():
@@ -223,17 +224,19 @@ class AutoJuego(BaseModel):
     color: str = "#c83232"
     entra: float
     sale: float | None = None
+    patente: str | None = None
 
 
 class JuegoIn(BaseModel):
     autos: list[AutoJuego]
+    patentes: bool = False  # armar también la cámara frontal que lee las patentes
 
 
 @app.post("/api/juego")
 def guardar_juego(body: JuegoIn):
     """Convierte la partida en un video de cámara cenital; después se procesa con /api/procesar."""
     try:
-        name = juego.save([a.model_dump() for a in body.autos])
+        name = juego.save([a.model_dump() for a in body.autos], patentes=body.patentes)
     except juego.JuegoError as e:
         raise HTTPException(400, str(e))
     return {"nombre": name}

@@ -431,6 +431,29 @@ class JuegoTest(unittest.TestCase):
             self.assertLess(abs(s["duracion_seg"] - real), 30)
             self.assertEqual(s["monto"], calculate_amount(real, 1000, 15))
 
+    def test_valida_patentes(self):
+        from app import juego
+        with self.assertRaises(juego.JuegoError):  # falta la patente
+            juego.build_schedule([{"color": "#c83232", "entra": 1}], patentes=True)
+        with self.assertRaises(juego.JuegoError):  # formato no argentino
+            juego.build_schedule([{"color": "#c83232", "entra": 1, "patente": "AB123C"}], patentes=True)
+        with self.assertRaises(juego.JuegoError):  # repetida
+            juego.build_schedule([{"color": "#c83232", "entra": 1, "patente": "AB123CD"},
+                                  {"color": "#c83232", "entra": 4, "patente": "ab 123 cd"}], patentes=True)
+        schedule, _ = juego.build_schedule([{"color": "#c83232", "entra": 1, "patente": "abc 123"}], patentes=True)
+        self.assertEqual(schedule[0][3], "ABC123")
+
+    def test_no_lista_videos_a_medio_escribir(self):
+        from app import main
+        folder = config.VIDEO_PATH.parent
+        folder.mkdir(parents=True, exist_ok=True)
+        tmp = folder / ".juego-a-medio-escribir.mp4"
+        tmp.write_bytes(b"")
+        try:
+            self.assertNotIn(tmp.name, [v["nombre"] for v in main._list_videos()])
+        finally:
+            tmp.unlink()
+
     def test_guarda_solo_las_ultimas(self):
         from app import juego
         folder = TMP / "juego-prune"
@@ -438,6 +461,36 @@ class JuegoTest(unittest.TestCase):
             juego.save([{"color": "#c83232", "entra": 0}], folder=folder)
         self.assertEqual(len(list(folder.glob("juego-*.mp4"))), juego.KEEP)
         self.assertEqual(len(list(folder.glob("juego-*.json"))), juego.KEEP)
+        self.assertEqual(list(folder.glob(".*")), [])  # no quedan temporales
+
+
+@unittest.skipUnless(HAY_LECTOR, "falta fast-alpr: pip install -r requirements.txt")
+class JuegoPatentesTest(unittest.TestCase):
+    def test_salidas_desordenadas_se_cobran_por_patente(self):
+        """Salen en otro orden que el de llegada, y uno entra justo cuando sale otro: con la
+        cámara frontal, cada salida se cobra a la entrada de su patente."""
+        from app import juego
+        autos = [{"color": "#c82828", "entra": 1.0, "sale": 22.0, "patente": "AB123CD"},
+                 {"color": "#1e6ebe", "entra": 3.5, "sale": 12.0, "patente": "AC456FG"},
+                 {"color": "#e1e1e1", "entra": 7.0, "sale": 17.0, "patente": "ABC123"},
+                 {"color": "#e6c31e", "entra": 12.3, "patente": "AE905KT"}]
+        folder = TMP / "juego-patentes"
+        name = juego.save(autos, folder=folder, patentes=True)
+        self.assertTrue((folder / name.replace(".mp4", "-frontal.mp4")).exists())
+        database.init_db()
+        database.reset_events()
+        database.set_pricing(1000, 15)
+        VideoProcessor(time_scale=60).process(folder / name, None)
+        evs = {e["id"]: e for e in database.list_events(100)}
+        self.assertEqual(sorted(e["patente"] for e in evs.values() if e["tipo_evento"] == "entrada"),
+                         sorted(a["patente"] for a in autos))
+        salidas = [e for e in evs.values() if e["tipo_evento"] == "salida"]
+        self.assertEqual(len(salidas), 3)
+        for s in salidas:
+            a = next(x for x in autos if x["patente"] == s["patente"])
+            self.assertEqual(evs[s["entrada_id"]]["patente"], s["patente"])
+            real = (a["sale"] + juego.crossing_offset("up") - a["entra"] - juego.crossing_offset("down")) * 60
+            self.assertEqual(s["monto"], calculate_amount(real, 1000, 15))
 
 
 if __name__ == "__main__":

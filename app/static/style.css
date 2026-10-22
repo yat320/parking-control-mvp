@@ -89,3 +89,8 @@ button.auto span, .auto-fue span { flex:1; } button.auto small, .auto-fue small 
 tr.bien td:last-child { color:var(--ok); } tr.mal td:last-child { color:var(--bad); }
 tr td small { color:var(--muted); }
 #conclusion { font-size:14px; color:var(--text); margin:12px 0; }
+.frontal { width:100%; display:block; border-radius:8px; margin-top:8px; aspect-ratio:16/9; }
+.frontal[hidden] { display:none; }
+.chapa { font-family:ui-monospace, Menlo, monospace; letter-spacing:.5px; font-weight:600; }
+button.auto em { font-style:normal; color:var(--accent); font-weight:600; white-space:nowrap; }
+button.auto small { white-space:nowrap; }

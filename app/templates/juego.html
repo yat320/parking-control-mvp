@@ -27,6 +27,8 @@
         <canvas id="cancha" width="{{ constantes.ancho }}" height="{{ constantes.alto }}"></canvas>
         <img id="feed" alt="Video procesado por el sistema" hidden>
       </div>
+      <canvas id="frontal" class="frontal" width="{{ constantes.frontal.ancho }}" height="{{ constantes.frontal.alto }}"
+              aria-label="Cámara frontal"></canvas>
       <div class="progress"><div id="progreso"></div></div>
 
       <div id="controles">
@@ -35,8 +37,10 @@
           <button id="btn-terminar" disabled>Terminar y mandar al sistema</button>
           <span class="reloj"><b id="reloj">0:00</b> <small id="hora-sim"></small></span>
         </div>
-        <h2 class="est-titulo">Estacionados <small class="meta">tocá uno para que salga</small></h2>
+        <h2 class="est-titulo">Estacionados <small class="meta">tocá Sacar para que salga</small></h2>
         <ul id="estacionados" class="autos"><li class="vacio">Todavía no entró nadie.</li></ul>
+        <label class="check"><input type="checkbox" id="frontal-on" checked>
+          <span>Cámara frontal: leer las patentes <small>(así la salida se cobra a la entrada de esa misma patente)</small></span></label>
         <label class="check"><input type="checkbox" id="colar">
           <span>Permitir autos pegados <small>(uno se cuela atrás de otro sin esperar los 2 s: prueba de colado)</small></span></label>
         <p id="msg" class="meta" aria-live="polite">Tocá <b>Entra un auto</b> (o la tecla E) para empezar.</p>
@@ -53,7 +57,8 @@
         <li>Tarifa: <b id="tarifa">—</b> (se cambia en el panel).</li>
         <li>Entre auto y auto del mismo carril tienen que pasar 2 s, como con una barrera de verdad.</li>
         <li>Con teclado: <b>E</b> hace entrar un auto, <b>1</b> a <b>9</b> saca al de ese lugar de la lista.</li>
-        <li>Probá sacar uno que no sea el primero en entrar, o colarte atrás de otro: son las fallas que hay que conocer antes de instalarlo.</li>
+        <li>Probá sacar uno que no sea el primero en entrar, con la cámara frontal y sin ella, o colarte atrás de otro: son las fallas que hay que conocer antes de instalarlo.</li>
+        <li>Con la cámara frontal, el sistema tarda más en procesar (lee las patentes cuadro por cuadro).</li>
       </ul>
     </section>
 
@@ -62,7 +67,7 @@
       <div class="stats cuatro" id="conteo"></div>
       <div class="tabla">
         <table>
-          <thead><tr><th>Salida</th><th>Auto que salió</th><th>Estadía real</th><th>Debía cobrar</th>
+          <thead><tr><th>Salida</th><th>Auto que salió</th><th class="th-chapa">Patente</th><th class="th-chapa" id="th-patentes">Leyó</th><th>Estadía real</th><th>Debía cobrar</th>
             <th>Estadía del sistema</th><th>Cobró</th><th></th></tr></thead>
           <tbody id="comparacion"></tbody>
         </table>

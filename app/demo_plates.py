@@ -26,6 +26,7 @@ SPEED = 170  # px/s
 # de prueba piden esos dos; con chapas reales rinden más los de config.py.
 DRAWN_OCR = "cct-xs-v1-global-model"
 DRAWN_DETECTOR = "yolo-v9-t-384-license-plate-end2end"
+LANE_DX = 215  # con carriles: centro de cada auto respecto del medio
 PLATE_W, PLATE_H = 100, 32  # ~10% del ancho: el detector, entrenado con fotos reales, no ve chapas mucho más grandes
 
 # (segundo, sentido, patente, color del auto BGR). "down" = entra, "up" = sale.
@@ -56,8 +57,8 @@ def plate_image(text: str) -> np.ndarray:
     return cv2.resize(img, (PLATE_W, PLATE_H), interpolation=cv2.INTER_AREA)
 
 
-def draw_car(frame: np.ndarray, cx: int, cy: int, color, plate: np.ndarray) -> None:
-    x0, y0 = cx - CAR_W // 2, cy - CAR_H // 2
+def draw_car(frame: np.ndarray, cx: int, cy: int, color, plate: np.ndarray, scale: float = 1.0) -> None:
+    """`scale`: tamaño aparente (perspectiva: más cerca de la cámara, más grande)."""
     car = np.zeros((CAR_H, CAR_W, 3), np.uint8)
     car[:] = color
     cv2.rectangle(car, (35, 18), (CAR_W - 35, 95), (55, 60, 65), -1)          # parabrisas
@@ -66,33 +67,46 @@ def draw_car(frame: np.ndarray, cx: int, cy: int, color, plate: np.ndarray) -> N
     cv2.rectangle(car, (60, 205), (CAR_W - 60, 225), (30, 30, 30), -1)        # paragolpes
     py, px = 165, (CAR_W - plate.shape[1]) // 2
     car[py:py + plate.shape[0], px:px + plate.shape[1]] = plate
+    if scale != 1.0:
+        car = cv2.resize(car, (round(CAR_W * scale), round(CAR_H * scale)), interpolation=cv2.INTER_AREA)
+    ch, cw = car.shape[:2]
+    x0, y0 = cx - cw // 2, cy - ch // 2
     # pegar recortando a los bordes del cuadro
     fx0, fy0 = max(0, x0), max(0, y0)
-    fx1, fy1 = min(W, x0 + CAR_W), min(H, y0 + CAR_H)
+    fx1, fy1 = min(W, x0 + cw), min(H, y0 + ch)
     if fx1 > fx0 and fy1 > fy0:
         frame[fy0:fy1, fx0:fx1] = car[fy0 - y0:fy1 - y0, fx0 - x0:fx1 - x0]
 
 
-def generate(path: Path, seconds: int = SECONDS, lead: float = 0.0) -> Path:
-    """`lead`: segundos de más al principio (la cámara empezó a grabar antes)."""
+def generate(path: Path, seconds: float = SECONDS, lead: float = 0.0, schedule=None, lanes: bool = False) -> Path:
+    """`lead`: segundos de más al principio (la cámara empezó a grabar antes).
+    `schedule`: lista de (segundo, sentido, patente, color BGR); por defecto, SCHEDULE.
+    `lanes`: el que entra va por la izquierda y el que sale por la derecha (si no, por el medio),
+    así un auto que entra y otro que sale a la vez no se tapan."""
+    schedule = schedule or SCHEDULE
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     out = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), FPS, (W, H))
+    from .demo_video import SensorNoise
     rng = np.random.default_rng(7)
+    noise = SensorNoise(rng, (H, W, 3), 3)
     base = np.full((H, W, 3), (95, 100, 105), np.uint8)
     cv2.rectangle(base, (0, 0), (W, 110), (150, 140, 120), -1)  # pared al fondo
-    plates = {p: plate_image(p) for _, _, p, _ in SCHEDULE}
+    plates = {p: plate_image(p) for _, _, p, _ in schedule}
     travel = (H + CAR_H) / SPEED
     for i in range(int((seconds + lead) * FPS)):
         t = i / FPS - lead
         frame = base.copy()
-        for start, way, plate, color in SCHEDULE:
+        for start, way, plate, color in schedule:
             k = t - start
             if 0 <= k <= travel:
                 cy = -CAR_H // 2 + int(k * SPEED) if way == "down" else H + CAR_H // 2 - int(k * SPEED)
-                draw_car(frame, W // 2, cy, color, plates[plate])
-        noise = rng.normal(0, 3, frame.shape).astype(np.int16)
-        out.write(np.clip(frame.astype(np.int16) + noise, 0, 255).astype(np.uint8))
+                cx = W // 2 + ((-LANE_DX if way == "down" else LANE_DX) if lanes else 0)
+                # Con carriles, perspectiva: el que se acerca (baja) crece y el que se va se achica,
+                # como en una cámara real (el emparejamiento usa eso para separar entrada y salida).
+                scale = 0.7 + 0.5 * min(1.0, max(0.0, cy / H)) if lanes else 1.0
+                draw_car(frame, cx, cy, color, plates[plate], scale)
+        out.write(noise.apply(frame, i))
     out.release()
     return path
 
