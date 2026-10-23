@@ -493,5 +493,28 @@ class JuegoPatentesTest(unittest.TestCase):
             self.assertEqual(s["monto"], calculate_amount(real, 1000, 15))
 
 
+INTEL = Path(__file__).resolve().parent.parent / "videos"
+
+
+@unittest.skipUnless((INTEL / "intel_estacionamiento.mp4").exists() and (INTEL / "intel_peatones.mp4").exists(),
+                     "faltan los videos de Intel: python tools/descargar_videos_intel.py")
+class IntelVideosTest(unittest.TestCase):
+    """Videos reales de Intel (CC BY 4.0), revisados cuadro por cuadro."""
+
+    def tipos(self, name):
+        database.init_db()
+        database.reset_events()
+        events = VideoProcessor(detector_kind="motion").process(INTEL / name, None)
+        return [e["tipo_evento"] for e in events]
+
+    def test_carril_de_estacionamiento(self):
+        # Sube un blanco, baja uno gris, sube uno rojo, baja otro blanco.
+        self.assertEqual(self.tipos("intel_estacionamiento.mp4"), ["salida", "entrada", "salida", "entrada"])
+
+    def test_personas_y_bicis_no_cuentan(self):
+        # Una persona cruza la línea caminando y pasa una bicicleta: solo cuentan los dos autos que suben.
+        self.assertEqual(self.tipos("intel_peatones.mp4"), ["salida", "salida"])
+
+
 if __name__ == "__main__":
     unittest.main()

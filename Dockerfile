@@ -18,6 +18,10 @@ COPY --chown=user . .
 # publicada: su fuente no declara licencia. Se usa solo localmente.
 RUN python tools/generate_test_video.py && python -m app.demo_plates --par videos/
 
+# Dos videos reales de estacionamiento (Intel, CC BY 4.0: se pueden publicar citando la
+# fuente, que figura en la descripción de cada uno). Si no se pueden bajar, la app anda igual.
+RUN python tools/descargar_videos_intel.py || echo "No se pudieron bajar los videos de Intel."
+
 # Los modelos de patentes (unos 10 MB) se bajan al armar la imagen: así la primera
 # lectura no espera la descarga, y la app no depende de GitHub para arrancar.
 # Los modelos por defecto y los que piden los videos de prueba con chapas dibujadas.

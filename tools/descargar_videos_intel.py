@@ -21,8 +21,7 @@ from pathlib import Path
 VIDEOS = Path(__file__).resolve().parent.parent / "videos"
 SOURCE = "https://github.com/intel-iot-devkit/sample-videos"
 CREDIT = "Video: Intel IoT Devkit sample-videos (CC BY 4.0)"
-# Los videos están en Git LFS: esta es la dirección que sirve el archivo de verdad.
-URL = "https://media.githubusercontent.com/media/intel-iot-devkit/sample-videos/master/{}.mp4"
+URL = "https://raw.githubusercontent.com/intel-iot-devkit/sample-videos/master/{}.mp4"
 
 VIDEOS_INTEL = {
     "intel_estacionamiento": {

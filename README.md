@@ -88,6 +88,25 @@ y los conteos siguen en vivo. Medido con el límite de cada plan de Render:
 Procesando por consola (sin `--realtime`) no se saltea nada y las patentes se leen en el mismo
 hilo: el resultado es siempre el mismo.
 
+## Videos reales de estacionamiento
+
+```bash
+python tools/descargar_videos_intel.py
+```
+
+Baja dos videos de muestra de Intel ([sample-videos](https://github.com/intel-iot-devkit/sample-videos),
+licencia CC BY 4.0), que la versión publicada ya trae en el selector:
+
+- `intel_estacionamiento.mp4`: un carril de estacionamiento visto desde arriba (30 s). Pasan cuatro
+  autos: el sistema registra salida, entrada, salida, entrada, los cuatro en el sentido correcto.
+- `intel_peatones.mp4`: un estacionamiento con un auto, una persona y una bicicleta (54 s). La
+  persona cruza la línea caminando y no cuenta; tampoco la bici; los dos cruces del auto sí.
+
+Revisados cuadro por cuadro, y en vivo con el procesador de Render gratis dan lo mismo. Las
+salidas salen "sin entrada": esos autos ya estaban adentro cuando empezó el video. El workflow
+**Probar con videos reales** los procesa en GitHub y deja eventos y hojas de cuadros en la rama
+`resultados-pruebas`.
+
 ## Probar con tu video
 
 En la web, debajo del video, **Probar con tu video**: desde el celular se elige un video de la
