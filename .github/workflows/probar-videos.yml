@@ -1,0 +1,69 @@
+# Baja los videos reales de prueba, los procesa y guarda el resultado (eventos y hojas de
+# cuadros del video procesado) en la rama resultados-pruebas, para revisarlo sin bajar nada.
+name: Probar con videos reales
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [probar-videos]
+
+permissions:
+  contents: write
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Bajar los videos
+        run: python tools/descargar_videos_intel.py
+      - name: Procesar y armar el informe
+        run: |
+          mkdir -p informe
+          python - <<'PY'
+          import json, cv2, numpy as np
+          from pathlib import Path
+          from app import database
+          from app.video_processor import VideoProcessor
+          database.init_db()
+          out = Path("informe"); lines = ["# Pruebas con videos reales\n"]
+          for v in sorted(Path("videos").glob("intel_*.mp4")):
+              database.reset_events()
+              c = cv2.VideoCapture(str(v)); n = int(c.get(7)); fps = c.get(5); w, h = int(c.get(3)), int(c.get(4)); c.release()
+              proc = out / f"{v.stem}_procesado.mp4"
+              VideoProcessor().process(v, proc)
+              evs = list(reversed(database.list_events()))
+              lines.append(f"## {v.name}\n\n{w}x{h}, {fps:.0f} fps, {n / fps:.1f} s\n")
+              lines += [f"- {e['tipo_evento']} {e['vehicle_id']} t={e['timestamp']} monto={e['monto']}" for e in evs] or ["- (sin eventos)"]
+              s = database.stats(); lines.append(f"\nEntradas {s['entradas']} · salidas {s['salidas']} · adentro {s['adentro']}\n")
+              # Hojas de cuadros: uno cada medio segundo, 4x4 por hoja.
+              c = cv2.VideoCapture(str(proc)); pfps = c.get(5); pn = int(c.get(7)); step = max(1, round(pfps / 2))
+              frames = []
+              for i in range(0, pn, step):
+                  c.set(1, i); ok, f = c.read()
+                  if ok:
+                      f = cv2.resize(f, (480, round(480 * f.shape[0] / f.shape[1])))
+                      cv2.putText(f, f"{i / pfps:.1f}s", (8, f.shape[0] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                      frames.append(f)
+              for k in range(0, len(frames), 16):
+                  page = frames[k:k + 16]; page += [np.zeros_like(frames[0])] * (16 - len(page))
+                  cv2.imwrite(str(out / f"{v.stem}_hoja{k // 16 + 1:02d}.jpg"),
+                              np.vstack([np.hstack(page[r:r + 4]) for r in range(0, 16, 4)]), [cv2.IMWRITE_JPEG_QUALITY, 70])
+              proc.unlink()
+          (out / "README.md").write_text("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          PY
+          cat informe/README.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Guardar el informe en la rama resultados-pruebas
+        run: |
+          cd informe
+          git init -q -b resultados-pruebas
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A && git commit -q -m "Informe de ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" resultados-pruebas
