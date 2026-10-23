@@ -135,7 +135,7 @@ galería o se graba uno en el momento. Se elige cómo cruzan los autos (de arrib
 la línea acostada, o de costado, con la línea parada; y si entrar es al revés) y **Subir y
 procesar**: se sube con barra de progreso y arranca solo.
 
-- Hasta 80 MB y 90 segundos (`PARKING_UPLOAD_MB`, `PARKING_UPLOAD_SECONDS`). Rinde más un video
+- Hasta 150 MB y 90 segundos (`PARKING_UPLOAD_MB`, `PARKING_UPLOAD_SECONDS`). Rinde más un video
   de 20 a 40 segundos con el celular quieto, en una entrada de cochera o una calle.
 - Se guarda en `videos/subido-AAAAMMDD-HHMMSS.<ext>` con su `.json` de línea (ver *Ajustes por
   video*), y queda en el selector. Solo se guardan los últimos 5 (`PARKING_UPLOAD_KEEP`).
