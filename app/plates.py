@@ -10,7 +10,9 @@ Cómo se usa en el procesamiento (app/video_processor.py):
 
 Si fast-alpr no está instalado, `create_reader()` devuelve None y todo sigue como antes.
 """
+import os
 import re
+import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
@@ -97,7 +99,8 @@ class PlateReader:
     def __init__(self, detector_model: str = None, ocr_model: str = None):
         from fast_alpr import ALPR  # import acá: es opcional y tarda en cargar
         self.alpr = ALPR(detector_model=detector_model or config.PLATES_DETECTOR,
-                         ocr_model=ocr_model or config.PLATES_OCR)
+                         ocr_model=ocr_model or config.PLATES_OCR,
+                         detector_sess_options=_session_options(), ocr_sess_options=_session_options())
 
     def read(self, frame: np.ndarray) -> list[PlateRead]:
         out = []
@@ -118,8 +121,83 @@ class PlateReader:
         return out
 
 
+def _session_options():
+    """Hilos de los modelos: en un servidor de menos de un procesador (Render), varios hilos
+    se pisan entre sí y frenan la detección; con PARKING_PLATES_THREADS se suben."""
+    import onnxruntime as ort
+    o = ort.SessionOptions()
+    o.intra_op_num_threads = config.PLATES_THREADS
+    o.inter_op_num_threads = 1
+    return o
+
+
 _readers: dict = {}
 _failed: set = set()
+
+
+class AsyncPlates:
+    """Lee patentes en otro hilo, para procesar en vivo sin esperar cada lectura.
+
+    Leer una patente es lo más caro del sistema (un modelo de IA); en un servidor chico
+    tarda más que un cuadro de video. Así la detección, la barrera y los eventos siguen al
+    ritmo de la cámara y las patentes llegan apenas están: con poco procesador se leen menos
+    veces, pero nada se frena. Hay una sola lectura en curso: si está ocupado, `submit`
+    no hace nada y ese cuadro no se lee.
+    """
+
+    def __init__(self, reader: "PlateReader"):
+        self.reader = reader
+        self._lock = threading.Lock()
+        self._wake = threading.Event()
+        self._job = None
+        self._busy = False
+        self._done = []
+        self._closed = False
+        threading.Thread(target=self._run, daemon=True, name="patentes").start()
+
+    def idle(self) -> bool:
+        return not self._busy
+
+    def submit(self, frame: np.ndarray, tag) -> bool:
+        """Manda un cuadro a leer (con `tag`, por ejemplo el segundo del video). False si está ocupado."""
+        with self._lock:
+            if self._busy or self._closed:
+                return False
+            self._busy, self._job = True, (frame, tag)
+        self._wake.set()
+        return True
+
+    def results(self) -> list:
+        """Lecturas terminadas desde la última llamada: [(lecturas, tag), ...]."""
+        with self._lock:
+            out, self._done = self._done, []
+        return out
+
+    def close(self) -> None:
+        self._closed = True
+        self._wake.set()
+
+    def _run(self) -> None:
+        # Menos prioridad que la detección: si no alcanza el procesador, que espere la
+        # patente y no la barrera.
+        try:
+            os.setpriority(os.PRIO_PROCESS, threading.get_native_id(), config.PLATES_NICE)
+        except (AttributeError, OSError):
+            pass
+        while True:
+            self._wake.wait()
+            self._wake.clear()
+            if self._closed:
+                return
+            frame, tag = self._job
+            try:
+                reads = self.reader.read(frame)
+            except Exception as e:  # una lectura fallida no corta el video
+                print(f"[PATENTES] error al leer: {e}", flush=True)
+                reads = []
+            with self._lock:
+                self._done.append((reads, tag))
+                self._busy = False
 
 
 def create_reader(ocr_model: str | None = None, detector_model: str | None = None) -> PlateReader | None:

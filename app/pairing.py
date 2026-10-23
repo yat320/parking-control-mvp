@@ -112,7 +112,7 @@ class PlateTimeline:
 class FrontalFile:
     """La cámara frontal grabada: se lee a la par del video de la barrera."""
 
-    def __init__(self, path: Path, offset: float, reader: plates.PlateReader):
+    def __init__(self, path: Path, offset: float, reader: plates.PlateReader, live: bool = False):
         self.cap = cv2.VideoCapture(str(path))
         if not self.cap.isOpened():
             raise FileNotFoundError(f"No se pudo abrir el video de la cámara frontal: {Path(path).name}")
@@ -124,23 +124,48 @@ class FrontalFile:
         self.done = False
         self.last_frame = None
         self.last_boxes = []   # (x, y, w, h, texto) de la última lectura, en el cuadro frontal
+        # En vivo las patentes se leen en otro hilo (plates.AsyncPlates); con archivos
+        # procesados de una, en el mismo, así el resultado es siempre el mismo.
+        self.async_reader = plates.AsyncPlates(reader) if live else None
 
-    def advance(self, t: float) -> None:
-        """Lee la frontal hasta el momento que corresponde a t (segundos de la barrera)."""
+    def _add(self, reads, when: float) -> None:
+        self.last_boxes = [(*r.box, r.text) for r in reads]
+        for r in reads:
+            self.timeline.add(r, when)
+
+    def advance(self, t: float, busy: bool = True) -> None:
+        """Lee la frontal hasta el momento que corresponde a t (segundos de la barrera).
+
+        Solo busca patentes si `busy` (la cámara de la barrera ve algún auto): leer
+        patentes es lo más caro, y sin autos a la vista no hay nada que leer. Los
+        cuadros intermedios se saltean sin convertirlos a imagen.
+        """
         target = t + self.offset
+        if self.async_reader:
+            for reads, when in self.async_reader.results():
+                self._add(reads, when)
         while not self.done and self.idx / self.fps <= target:
+            last = (self.idx + 1) / self.fps > target  # el último antes de alcanzar a la barrera
+            want = busy and (self.idx + 1) % config.PLATES_EVERY == 0 \
+                and (self.async_reader is None or self.async_reader.idle())
+            if not (want or last):
+                if not self.cap.grab():
+                    self.done = True
+                    break
+                self.idx += 1
+                continue
             ok, frame = self.cap.read()
             if not ok:
                 self.done = True
                 break
             self.idx += 1
             self.last_frame = frame
-            if self.idx % config.PLATES_EVERY == 0:
-                reads = self.reader.read(frame)
-                self.last_boxes = [(*r.box, r.text) for r in reads]
+            if want:
                 when = self.idx / self.fps - self.offset
-                for r in reads:
-                    self.timeline.add(r, when)
+                if self.async_reader:
+                    self.async_reader.submit(frame, when)
+                else:
+                    self._add(self.reader.read(frame), when)
 
     def inset(self, width: int) -> np.ndarray | None:
         """El último cuadro frontal achicado a `width`, con las patentes marcadas, para el recuadro."""
@@ -155,4 +180,6 @@ class FrontalFile:
         return cv2.resize(f, (width, h), interpolation=cv2.INTER_AREA)
 
     def release(self) -> None:
+        if self.async_reader:
+            self.async_reader.close()
         self.cap.release()

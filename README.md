@@ -57,8 +57,9 @@ que el video de prueba), lo procesa el detector de verdad y muestra, salida por 
   de la cancha se ve la cámara frontal en vivo. Se arman los dos videos (barrera + frontal, como en
   *Dos cámaras*) y la tabla muestra la patente de cada auto y la que leyó el sistema. En la frontal
   el que entra viene por la izquierda y crece, y el que sale va por la derecha y se achica: así el
-  sistema separa a uno que entra de otro que sale al mismo tiempo. Leer patentes es lento en un
-  servidor chico (Render gratis): procesar puede tardar varias veces lo que duró la partida.
+  sistema separa a uno que entra de otro que sale al mismo tiempo. La partida se procesa en vivo
+  (tarda lo mismo que duró). Con la cámara frontal hace falta más procesador: en Render gratis
+  (0,1 CPU) se pierden autos y patentes; con el plan Starter (0,5 CPU) sale bien.
 - 1 s de juego = 1 minuto de estadía (`PARKING_TIME_SCALE`). Hasta 120 s y 40 autos por partida.
 - Entre dos autos del mismo carril tienen que pasar 2 s: con menos, el detector de movimiento los
   junta y cuenta uno solo. **Permitir autos pegados** deja colarse a 1 s, para ver esa falla.
@@ -69,6 +70,23 @@ que el video de prueba), lo procesa el detector de verdad y muestra, salida por 
   Los videos se escriben con un nombre oculto (`.juego-...`) y se renombran al terminar: un video a
   medio armar no aparece en la lista (no se podría abrir).
 - Teclado: `E` entra un auto, `1` a `9` saca al de ese lugar de la lista.
+
+## En vivo y servidores chicos
+
+En vivo (la web, una cámara) el sistema nunca va más lento que el video: si el procesador no
+alcanza, saltea cuadros. Para que alcance, el detector trabaja sobre una copia de 320 px de ancho
+(`PARKING_DETECT_WIDTH`) y las patentes se leen en otro hilo, con menos prioridad, solo cuando la
+cámara de la barrera ve un auto: si el procesador no da, se leen menos patentes, pero la barrera
+y los conteos siguen en vivo. Medido con el límite de cada plan de Render:
+
+| Procesador | Sin patentes | Dos cámaras con patentes |
+|---|---|---|
+| 0,1 CPU (Render gratis) | en vivo, todos los eventos | se pierden autos y patentes |
+| 0,5 CPU (Render Starter) | en vivo, todos los eventos | en vivo, todos los eventos |
+| 1 CPU | en vivo, todos los eventos | en vivo, todos los eventos |
+
+Procesando por consola (sin `--realtime`) no se saltea nada y las patentes se leen en el mismo
+hilo: el resultado es siempre el mismo.
 
 ## Probar con tu video
 

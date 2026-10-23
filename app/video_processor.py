@@ -90,6 +90,16 @@ class VideoProcessor:
 
     def process(self, video_path: Path, output_path: Path | None = None, realtime: bool = False,
                 show: bool = False) -> list[dict]:
+        """Procesa el video entero. Devuelve los eventos registrados (ver _process)."""
+        # Ocupado desde ya: cargar los modelos de patentes tarda unos segundos y en ese
+        # rato la web no tiene que dejar arrancar otro video (por ejemplo, con un doble toque).
+        self.running = True
+        try:
+            return self._process(video_path, output_path, realtime, show)
+        finally:
+            self.running = False
+
+    def _process(self, video_path: Path, output_path: Path | None, realtime: bool, show: bool) -> list[dict]:
         """Procesa el video entero. Devuelve los eventos registrados.
 
         Si al lado del video hay un .json con el mismo nombre (por ejemplo
@@ -106,8 +116,10 @@ class VideoProcessor:
                        if want_plates and reader is None else "")
         self._plate_boxes = []
         # Con cámara frontal, las patentes se leen ahí; si no, en este mismo video.
-        frontal = pairing.FrontalFile(opts["frontal"], opts["offset"], reader) if opts["frontal"] and reader else None
+        frontal = pairing.FrontalFile(opts["frontal"], opts["offset"], reader, live=realtime) \
+            if opts["frontal"] and reader else None
         same_cam = reader if not frontal else None
+        same_async = plates.AsyncPlates(same_cam) if same_cam and realtime else None
         pending_pair = []  # (evento, segundo) registrados sin patente, esperando que la frontal la vea
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
@@ -148,8 +160,19 @@ class VideoProcessor:
         print(f"[VIDEO] {video_path} {w}x{h} @ {fps:.1f} fps, detector={detector.name}, "
               f"línea={tuple(line_rel)}, área mínima={min_area}, patentes={cams}", flush=True)
 
+        skipped = 0
         try:
             while not self._stop.is_set():
+                if realtime and frame_idx:
+                    # En vivo nunca se va más lento que el video: si el procesamiento se
+                    # atrasó (servidor chico), se saltean cuadros hasta alcanzarlo. El
+                    # detector y el tracker toleran huecos; lo que se pierde es fluidez.
+                    behind = int((time.monotonic() - t0) * fps) - frame_idx
+                    for _ in range(min(behind, int(fps))):  # a lo sumo 1 s de golpe
+                        if not cap.grab():
+                            break
+                        frame_idx += 1
+                        skipped += 1
                 ok, frame = cap.read()
                 if not ok:
                     break
@@ -164,15 +187,23 @@ class VideoProcessor:
                 self.barrier.update(video_t)
 
                 # Una sola cámara que también ve las patentes: leerlas cada N frames, si hay autos.
-                if same_cam and frame_idx % config.PLATES_EVERY == 0 and any(not t.missed for t in tracks.values()):
-                    reads = same_cam.read(original)
-                    plates.assign(reads, tracks, plate_scale)
-                    self._plate_boxes = [(tuple(int(v * plate_scale) for v in r.box), r.text) for r in reads]
-                    self._fill_late_plates(tracks, video_t)
+                # En vivo, en otro hilo: se usan las lecturas que van terminando.
+                if same_cam:
+                    done = same_async.results() if same_async else []
+                    if frame_idx % config.PLATES_EVERY == 0 and any(not t.missed for t in tracks.values()):
+                        if same_async:
+                            same_async.submit(original.copy(), video_t)
+                        else:
+                            done = [(same_cam.read(original), video_t)]
+                    for reads, _ in done:
+                        plates.assign(reads, tracks, plate_scale)
+                        self._plate_boxes = [(tuple(int(v * plate_scale) for v in r.box), r.text) for r in reads]
+                    if done:
+                        self._fill_late_plates(tracks, video_t)
 
                 # Dos cámaras: la frontal avanza a la par y anota las patentes que ve.
                 if frontal:
-                    frontal.advance(video_t)
+                    frontal.advance(video_t, busy=any(not t.missed for t in tracks.values()))
                     pending_pair = self._fill_pair_plates(frontal.timeline, pending_pair, video_t)
 
                 for tr in tracks.values():
@@ -251,13 +282,16 @@ class VideoProcessor:
             cap.release()
             if frontal:
                 frontal.release()
+            if same_async:
+                same_async.close()
             if writer:
                 writer.release()
             if show:
                 cv2.destroyAllWindows()
             self.barrier.reset()
             self.running = False
-        print(f"[VIDEO] fin: {frame_idx} frames, {len(events)} eventos", flush=True)
+        print(f"[VIDEO] fin: {frame_idx} frames, {len(events)} eventos"
+              + (f", {skipped} cuadros salteados para ir en vivo" if skipped else ""), flush=True)
         if output_path:
             print(f"[VIDEO] video procesado: {output_path}", flush=True)
         return events

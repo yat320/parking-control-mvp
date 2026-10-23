@@ -63,21 +63,38 @@ class MotionDetector(BaseDetector):
     LIGHT_CHROMA = 0.15  # cuánto puede cambiar el color y seguir siendo luz
 
     def __init__(self, min_area: int = 2500, warmup_frames: int = 25, history: int = 500,
-                 still_frames: int = 0):
+                 still_frames: int = 0, work_width: int = 0):
         self.min_area = min_area
+        # Ancho al que se achica cada cuadro antes de detectar (0 = no se achica). A 320 px
+        # cuesta ~4 veces menos que a 640 y un auto sigue midiendo decenas de píxeles; las
+        # cajas se devuelven en el tamaño original, así el resto no se entera.
+        self.work_width = work_width
+        self.scale = 1.0
         self.warmup_frames = warmup_frames
         self.still_frames = still_frames
         self.frames = 0
         self.subtractor = cv2.createBackgroundSubtractorMOG2(history=history, varThreshold=40, detectShadows=True)
-        self.kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        self.kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
+        self._kernels(1.0)
         self.protect = None  # dónde no aprende el fondo en el próximo frame
         self.age = None      # frames seguidos que cada píxel lleva protegido
         self.last_mask = None  # se guarda para depurar
 
+    def _kernels(self, s: float) -> None:
+        odd = lambda n: max(3, int(round(n * s)) | 1)  # noqa: E731
+        self.kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (odd(5), odd(5)))
+        self.kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (odd(21), odd(21)))
+        self.pad = max(2, round(self.PAD * s))
+
     def detect(self, frame: np.ndarray) -> list[Detection]:
         self.frames += 1
-        blurred = cv2.GaussianBlur(frame, (5, 5), 0)
+        if self.frames == 1 and self.work_width and frame.shape[1] > self.work_width:
+            self.scale = self.work_width / frame.shape[1]
+            self._kernels(self.scale)
+        s = self.scale
+        if s < 1:
+            frame = cv2.resize(frame, (self.work_width, max(1, round(frame.shape[0] * s))),
+                               interpolation=cv2.INTER_AREA)
+        blurred = cv2.GaussianBlur(frame, (5, 5) if s >= 1 else (3, 3), 0)
         # Los primeros frames el modelo todavía está aprendiendo el fondo.
         if self.frames <= self.warmup_frames:
             self.subtractor.apply(blurred)
@@ -103,17 +120,19 @@ class MotionDetector(BaseDetector):
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         detections = []
         for c in contours:
-            if cv2.contourArea(c) < self.min_area:
+            if cv2.contourArea(c) < self.min_area * s * s:
                 continue
-            x, y, w, h = cv2.boundingRect(c)
-            detections.append(Detection(x, y, w, h))
+            detections.append(Detection(*cv2.boundingRect(c)))
         if self.still_frames:
             boxes = np.zeros(mask.shape, bool)
-            p = self.PAD
+            p = self.pad
             for d in detections:
                 boxes[max(0, d.y - p):d.y + d.h + p, max(0, d.x - p):d.x + d.w + p] = True
             self.age = np.where(boxes, (0 if self.age is None else self.age) + 1, 0)
             self.protect = boxes & (self.age < self.still_frames)
+        if s < 1:  # de vuelta al tamaño del cuadro que entró
+            detections = [Detection(round(d.x / s), round(d.y / s), round(d.w / s), round(d.h / s))
+                          for d in detections]
         return detections
 
 
@@ -163,5 +182,5 @@ def create_detector(kind: str, min_area: int = 2500, fps: float = 25.0) -> BaseD
     if kind == "motion":
         from app import config
         return MotionDetector(min_area=min_area, history=max(500, round(config.BG_SECONDS * fps)),
-                              still_frames=round(config.STILL_SECONDS * fps))
+                              still_frames=round(config.STILL_SECONDS * fps), work_width=config.DETECT_WIDTH)
     raise ValueError(f"Detector desconocido: {kind!r} (usar 'motion' o 'yolo')")

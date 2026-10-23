@@ -41,6 +41,9 @@ BG_SECONDS = float(os.getenv("PARKING_FONDO_SEGUNDOS", "150"))
 # Mientras hay un vehículo, el fondo no lo aprende, como mucho estos segundos seguidos
 # (después, algo que se quedó quieto para siempre pasa al fondo igual).
 STILL_SECONDS = float(os.getenv("PARKING_QUIETO_SEGUNDOS", "20"))
+# Ancho al que el detector de movimiento achica cada cuadro (0 = no achicar). Más chico es más
+# rápido: en un servidor chico es lo que deja procesar en vivo.
+DETECT_WIDTH = int(os.getenv("PARKING_DETECT_WIDTH", "320"))
 
 # Escala de tiempo de la demo: cuántos segundos "reales" de estadía representa
 # cada segundo de video. Con 60, un auto que entra y sale 20 s después en el
@@ -62,6 +65,8 @@ UPLOAD_MIN_AREA = int(os.getenv("PARKING_UPLOAD_MIN_AREA", "1500"))  # en el vid
 # todos con PARKING_PLATES=1. Hace falta fast-alpr (requirements.txt); sin eso, no se leen.
 PLATES = os.getenv("PARKING_PLATES", "0") == "1"
 PLATES_EVERY = int(os.getenv("PARKING_PLATES_EVERY", "3"))          # leer cada N frames
+PLATES_THREADS = int(os.getenv("PARKING_PLATES_THREADS", "1"))      # hilos de los modelos de patentes
+PLATES_NICE = int(os.getenv("PARKING_PLATES_NICE", "10"))           # en vivo, prioridad más baja que la detección
 PLATES_MIN_SCORE = float(os.getenv("PARKING_PLATES_MIN_SCORE", "0.5"))  # suma de confianzas para aceptar una patente
 PLATES_WINDOW = int(os.getenv("PARKING_PLATES_WINDOW", "6"))       # lecturas recientes que votan (~1 s)
 PLATES_LATE_SECONDS = float(os.getenv("PARKING_PLATES_LATE", "3"))  # si se lee después de cruzar, hasta cuándo vale

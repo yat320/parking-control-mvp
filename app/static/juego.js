@@ -292,7 +292,7 @@ async function esperar(nombre, visto) {
     $("progreso").style.width = (e.progreso * 100) + "%";
     $("estado-proc").textContent = e.procesando
       ? `El sistema está mirando la partida (${Math.round(e.progreso * 100)}%)… ${e.ultimo_mensaje || ""}` +
-        (conPatentes() ? " Leer patentes es lento en un servidor chico: puede tardar varias veces lo que duró la partida." : "")
+        (conPatentes() ? " En un servidor chico algunas patentes pueden quedar sin leer." : "")
       : "";
     visto = visto || e.procesando;
     if (e.video === nombre && !e.procesando && (visto || e.progreso >= 0.99)) return comparar();
