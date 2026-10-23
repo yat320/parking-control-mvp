@@ -33,6 +33,21 @@ SCHEDULE = [
 ]
 
 
+def paused(dt: float, pause) -> float:
+    """Segundos de marcha de un auto que frena en la barrera.
+
+    `pause` es (llega, espera): a los `llega` s de aparecer frena y se queda `espera` s
+    (float("inf") si nadie le abre). Devuelve cuánto avanzó "en tiempo de marcha": así la
+    posición se calcula igual que la de un auto que no frena, en las dos cámaras.
+    """
+    if not pause:
+        return dt
+    reach, hold = pause
+    if dt <= reach:
+        return dt
+    return reach if dt - reach <= hold else dt - hold
+
+
 class SensorNoise:
     """Ruido de sensor precalculado: un banco de cuadros de ruido que se va rotando.
 
@@ -99,11 +114,11 @@ def generate(out: Path, seconds: float, seed: int = 7, schedule=None) -> None:
     for i in range(int(seconds * FPS)):
         t = i / FPS
         frame = bg.copy()
-        for start, direction, color in schedule:
+        for start, direction, color, *rest in schedule:
             dt = t - start
             if dt < 0:
                 continue
-            travel = dt * SPEED
+            travel = paused(dt, rest[0] if rest else None) * SPEED
             if direction == "down":
                 cx, cy = ENTRY_X, -CAR_H / 2 + travel
             else:

@@ -71,6 +71,27 @@ que el video de prueba), lo procesa el detector de verdad y muestra, salida por 
   medio armar no aparece en la lista (no se podría abrir).
 - Teclado: `E` entra un auto, `1` a `9` saca al de ese lugar de la lista.
 
+## Modo cabina: humano contra sistema (/cabina)
+
+Los autos llegan solos (uno cada 4 a 8 s) y **frenan en la barrera**; el jugador hace de cabinero:
+para dejarlos entrar escribe la patente que ve y toca **Anotar y abrir** (o **Abrir sin anotar**);
+para dejarlos salir busca la patente en su planilla y toca para **cobrar y abrir** (el monto sale
+de la hora que anotó). Mientras un auto espera, los demás hacen cola. El turno dura 90 s.
+
+Al terminar, el turno se convierte en video (`app/juego.py` con `espera` y `abre_entrada` /
+`abre_salida`: cada auto queda quieto en la barrera lo que esperó de verdad) y lo procesa el sistema.
+La comparación muestra, por cada salida, lo que había que cobrar, lo que cobró el humano y lo que
+cobró el sistema, y cuánto esperó cada auto en la barrera del humano.
+
+Probado con un cabinero automático que lee la patente y tarda 1,5 a 3 s por auto, equivocándose
+en una letra a propósito: 12 entradas y 8 salidas; humano 7/8 cobros bien ($4.750 de $5.500, el
+auto mal anotado no apareció en su planilla), sistema 8/8 ($5.500) con la cámara frontal.
+
+Para que el sistema empareje bien a los autos quietos en la barrera, la frontal del juego declara
+sus carriles (`"frontal_carriles": "entrada-izquierda"` en el .json: la chapa vista a la izquierda
+solo puede ser de una entrada) y una patente se asigna una sola vez por pasada, aunque una lectura
+con una letra mal la haya partido en dos tramos.
+
 ## En vivo y servidores chicos
 
 En vivo (la web, una cámara) el sistema nunca va más lento que el video: si el procesador no

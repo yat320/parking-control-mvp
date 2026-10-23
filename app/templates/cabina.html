@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cabina de la cochera</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%232f81f7%22/%3E%3Ctext x=%228%22 y=%2212.5%22 font-size=%2212%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22 font-weight=%22bold%22%3EP%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Cabina de la cochera <small>vos contra el sistema</small></h1>
+    <a class="boton" href="/juego">Otro modo de juego</a>
+    <a class="boton" href="/">← Panel</a>
+  </header>
+
+  <section class="intro">
+    <p><b>Vos sos el cabinero.</b> Los autos llegan solos y frenan en la barrera. Para dejarlos entrar,
+      <b>anotá la patente</b> y abrí. Para dejarlos salir, <b>buscalos en tu planilla</b>: se cobra según lo
+      que anotaste. Al terminar, la misma partida la procesa el sistema por video y se comparan los dos.</p>
+    <p class="aviso">La partida dura {{ duracion }} s. 1 segundo = {{ time_scale|int }} segundos de estadía.
+      Los autos que esperan mucho se impacientan: cuánto esperaron también cuenta.</p>
+  </section>
+
+  <main class="juego">
+    <section class="card">
+      <div class="video-box">
+        <canvas id="cancha" width="{{ constantes.ancho }}" height="{{ constantes.alto }}"></canvas>
+        <img id="feed" alt="Video procesado por el sistema" hidden>
+      </div>
+      <div class="progress"><div id="progreso"></div></div>
+
+      <div id="controles">
+        <div class="acciones">
+          <button id="btn-empezar" class="primario grande">Abrir la cabina</button>
+          <button id="btn-terminar" disabled>Terminar y comparar</button>
+          <span class="reloj"><b id="reloj">0:00</b> <small id="cola"></small></span>
+        </div>
+
+        <div class="puestos">
+          <div class="puesto" id="puesto-entrada">
+            <h3>Barrera de entrada</h3>
+            <div class="espera-auto" id="in-auto"><span class="vacio">Nadie esperando.</span></div>
+            <label for="in-patente" class="meta">Patente que ves</label>
+            <input id="in-patente" autocomplete="off" autocapitalize="characters" spellcheck="false"
+                   maxlength="9" placeholder="AB 123 CD" disabled>
+            <div class="acciones">
+              <button id="btn-anotar" class="primario" disabled>Anotar y abrir</button>
+              <button id="btn-sin-anotar" disabled>Abrir sin anotar</button>
+            </div>
+          </div>
+          <div class="puesto" id="puesto-salida">
+            <h3>Barrera de salida</h3>
+            <div class="espera-auto" id="out-auto"><span class="vacio">Nadie esperando.</span></div>
+            <p class="meta">Tocá su patente en tu planilla para cobrar y abrir:</p>
+            <div id="out-planilla" class="planilla-botones"></div>
+            <button id="btn-sin-cobrar" disabled>Abrir sin cobrar</button>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="frontal-on" checked>
+          <span>El sistema usa la cámara frontal para leer patentes <small>(sin ella cobra la salida al que entró primero)</small></span></label>
+        <p id="msg" class="meta" aria-live="polite">Tocá <b>Abrir la cabina</b> para empezar el turno.</p>
+      </div>
+      <p id="estado-proc" class="meta" aria-live="polite"></p>
+      <p id="error" class="error"></p>
+    </section>
+
+    <section class="card">
+      <h2>Tu planilla</h2>
+      <div class="tabla">
+        <table class="planilla">
+          <thead><tr><th>Patente</th><th>Entró</th><th>Salió</th><th>Cobraste</th></tr></thead>
+          <tbody id="planilla"><tr><td colspan="4" class="vacio">Todavía no anotaste nada.</td></tr></tbody>
+        </table>
+      </div>
+      <h2>Cómo se juega</h2>
+      <ul class="ayuda">
+        <li>Tarifa: <b id="tarifa">—</b>.</li>
+        <li>Con teclado: escribí la patente y <b>Enter</b> anota y abre.</li>
+        <li>Si te equivocás de patente al entrar, a la salida no la vas a encontrar (o vas a cobrarle a otro).</li>
+        <li>Mientras un auto espera en la barrera, el resto hace cola: apurate, pero sin errores.</li>
+      </ul>
+    </section>
+
+    <section id="resultado" class="card ancho" hidden>
+      <h2>Vos contra el sistema</h2>
+      <div class="stats cuatro" id="conteo"></div>
+      <div class="tabla">
+        <table>
+          <thead><tr><th>Salida</th><th>Auto</th><th>Patente</th><th>Debía cobrar</th><th>Cobraste</th><th>Cobró el sistema</th></tr></thead>
+          <tbody id="comparacion"></tbody>
+        </table>
+      </div>
+      <p id="conclusion" class="meta"></p>
+      <div class="acciones"><button id="btn-otra" class="primario">Jugar otro turno</button>
+        <a class="boton" href="/">Ver eventos en el panel</a></div>
+    </section>
+  </main>
+
+  <script>
+    const C = {{ constantes|tojson }};
+    const ESCALA = {{ time_scale }};
+    const DURACION = {{ duracion }};
+  </script>
+  <script src="/static/cabina.js"></script>
+</body>
+</html>

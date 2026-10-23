@@ -33,6 +33,7 @@ class Sighting:
     crop: np.ndarray | None = field(default=None, repr=False)
     used: bool = False
     widths: list = field(default_factory=list, repr=False)  # ancho de la chapa en cada lectura
+    xs: list = field(default_factory=list, repr=False)      # centro de la chapa, en fracción del ancho
     texts: dict = field(default_factory=dict, repr=False)   # texto leído -> suma de confianzas
 
     def trend(self) -> str:
@@ -51,16 +52,37 @@ class Sighting:
             return "aleja"
         return ""
 
+    def side(self) -> str:
+        """'izquierda' o 'derecha': de qué lado de la imagen se la vio (o '' si no se sabe)."""
+        if not self.xs:
+            return ""
+        return "izquierda" if float(np.median(self.xs)) < 0.5 else "derecha"
+
     def distance(self, t: float) -> float:
         """0 si t cae mientras se la veía; si no, cuánto antes o después."""
         return 0.0 if self.first <= t <= self.last else min(abs(t - self.first), abs(t - self.last))
 
 
 class PlateTimeline:
-    def __init__(self):
+    def __init__(self, lanes: str | None = None):
+        """`lanes`: "entrada-izquierda" o "entrada-derecha" si la frontal ve los dos carriles."""
         self.sightings: list[Sighting] = []
+        self.lanes = lanes
+        self.claimed: list[tuple[str, float, float]] = []  # (patente, primera vista, segundo del evento)
 
-    def add(self, read: plates.PlateRead, t: float) -> None:
+    def _taken(self, s: Sighting) -> bool:
+        """Esa chapa ya se le dio a un evento en esta misma pasada (mismo texto o una letra distinta).
+
+        Mientras un auto espera la barrera, la frontal lo ve en varios tramos, y una lectura con
+        una letra mal (WM833DH por AM833DH) puede abrir un tramo aparte: si no se descartan,
+        el auto siguiente se lleva la misma patente. La pasada va desde que se lo vio hasta
+        PAIR_AFTER s después del cruce; lo que se ve más tarde es otra pasada (la vuelta).
+        """
+        return any((s.plate == p or plates.one_off(s.plate, p))
+                   and first - config.PAIR_GAP_SECONDS <= s.first <= when + config.PAIR_AFTER
+                   for p, first, when in self.claimed)
+
+    def add(self, read: plates.PlateRead, t: float, width: int | None = None) -> None:
         if not plates.is_valid(read.text):
             return
         for s in reversed(self.sightings):
@@ -75,6 +97,8 @@ class PlateTimeline:
         s.plate = max(s.texts.items(), key=lambda kv: kv[1])[0]
         s.score += read.confidence
         s.widths.append(read.box[2])
+        if width:
+            s.xs.append((read.box[0] + read.box[2] / 2) / width)
         if read.confidence > s.best_conf:
             s.best_conf, s.crop = read.confidence, read.crop
         # No guardar para siempre: lo viejo ya no se puede emparejar con nada.
@@ -98,28 +122,39 @@ class PlateTimeline:
         wrong = {"entrada": "aleja", "salida": "acerca"}.get(kind) if config.PAIR_TREND else None
         if config.FRONTAL_LOOKS_IN and wrong:
             wrong = {"aleja": "acerca", "acerca": "aleja"}[wrong]
+        # Con los dos carriles a la vista, el lado de la imagen dice si entra o sale. Es lo que
+        # sirve con un auto quieto esperando la barrera: no se acerca ni se aleja.
+        side = None
+        if self.lanes and kind in ("entrada", "salida"):
+            entry_side = "izquierda" if self.lanes == "entrada-izquierda" else "derecha"
+            side = entry_side if kind == "entrada" else {"izquierda": "derecha", "derecha": "izquierda"}[entry_side]
         cands = [s for s in self.sightings
                  if not s.used and s.score >= config.PLATES_MIN_SCORE
                  and s.last >= t - config.PAIR_BEFORE and s.first <= t + config.PAIR_AFTER
-                 and not (wrong and s.trend() == wrong)]
+                 and not (wrong and s.trend() == wrong)
+                 and not (side and s.side() and s.side() != side)
+                 and not self._taken(s)]
         if not cands:
             return None
         best = min(cands, key=lambda s: s.first)
         best.used = True
+        self.claimed.append((best.plate, best.first, t))  # una patente, una vez por pasada
         return best
 
 
 class FrontalFile:
     """La cámara frontal grabada: se lee a la par del video de la barrera."""
 
-    def __init__(self, path: Path, offset: float, reader: plates.PlateReader, live: bool = False):
+    def __init__(self, path: Path, offset: float, reader: plates.PlateReader, live: bool = False,
+                 lanes: str | None = None):
         self.cap = cv2.VideoCapture(str(path))
         if not self.cap.isOpened():
             raise FileNotFoundError(f"No se pudo abrir el video de la cámara frontal: {Path(path).name}")
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 25.0
         self.offset = offset
         self.reader = reader
-        self.timeline = PlateTimeline()
+        self.timeline = PlateTimeline(lanes)
+        self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or None
         self.idx = 0
         self.done = False
         self.last_frame = None
@@ -131,7 +166,7 @@ class FrontalFile:
     def _add(self, reads, when: float) -> None:
         self.last_boxes = [(*r.box, r.text) for r in reads]
         for r in reads:
-            self.timeline.add(r, when)
+            self.timeline.add(r, when, self.width)
 
     def advance(self, t: float, busy: bool = True) -> None:
         """Lee la frontal hasta el momento que corresponde a t (segundos de la barrera).

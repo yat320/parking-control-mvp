@@ -92,13 +92,16 @@ def generate(path: Path, seconds: float = SECONDS, lead: float = 0.0, schedule=N
     noise = SensorNoise(rng, (H, W, 3), 3)
     base = np.full((H, W, 3), (95, 100, 105), np.uint8)
     cv2.rectangle(base, (0, 0), (W, 110), (150, 140, 120), -1)  # pared al fondo
-    plates = {p: plate_image(p) for _, _, p, _ in schedule}
+    from .demo_video import paused
+    plates = {s[2]: plate_image(s[2]) for s in schedule}
     travel = (H + CAR_H) / SPEED
     for i in range(int((seconds + lead) * FPS)):
         t = i / FPS - lead
         frame = base.copy()
-        for start, way, plate, color in schedule:
+        for start, way, plate, color, *rest in schedule:
             k = t - start
+            if k >= 0:
+                k = paused(k, rest[0] if rest else None)  # el que espera la barrera, quieto
             if 0 <= k <= travel:
                 cy = -CAR_H // 2 + int(k * SPEED) if way == "down" else H + CAR_H // 2 - int(k * SPEED)
                 cx = W // 2 + ((-LANE_DX if way == "down" else LANE_DX) if lanes else 0)

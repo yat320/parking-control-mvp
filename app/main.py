@@ -141,6 +141,16 @@ def pagina_juego(request: Request):
     })
 
 
+@app.get("/cabina", response_class=HTMLResponse)
+def pagina_cabina(request: Request):
+    """Modo cabina: los autos llegan solos y el jugador hace de cabinero (anota, cobra, abre)."""
+    return templates.TemplateResponse(request, "cabina.html", {
+        "time_scale": config.TIME_SCALE,
+        "constantes": juego.constants(),
+        "duracion": juego.CABINA_SECONDS,
+    })
+
+
 # ---------- API ----------
 
 @app.get("/api/estado")
@@ -225,18 +235,22 @@ class AutoJuego(BaseModel):
     entra: float
     sale: float | None = None
     patente: str | None = None
+    espera: bool = False               # modo cabina: frena en la barrera hasta que le abren
+    abre_entrada: float | None = None  # segundo en que le abrieron para entrar (None: nunca)
+    abre_salida: float | None = None
 
 
 class JuegoIn(BaseModel):
     autos: list[AutoJuego]
     patentes: bool = False  # armar también la cámara frontal que lee las patentes
+    duracion: float | None = Field(default=None, ge=0)  # largo mínimo del video (modo cabina)
 
 
 @app.post("/api/juego")
 def guardar_juego(body: JuegoIn):
     """Convierte la partida en un video de cámara cenital; después se procesa con /api/procesar."""
     try:
-        name = juego.save([a.model_dump() for a in body.autos], patentes=body.patentes)
+        name = juego.save([a.model_dump() for a in body.autos], patentes=body.patentes, duracion=body.duracion)
     except juego.JuegoError as e:
         raise HTTPException(400, str(e))
     return {"nombre": name}

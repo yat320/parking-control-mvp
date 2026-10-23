@@ -69,6 +69,38 @@ class EndToEndTest(unittest.TestCase):
         self.assertTrue((TMP / "out.mp4").stat().st_size > 0)
 
 
+class PairingCabinaTest(unittest.TestCase):
+    """Emparejar patentes cuando los autos esperan la barrera (modo cabina)."""
+
+    @staticmethod
+    def read(text, x, w=100):
+        from app import plates
+        return plates.PlateRead(text, 0.9, (x, 300, w, 32), None)
+
+    def test_auto_quieto_se_reconoce_por_el_carril(self):
+        from app import pairing
+        tl = pairing.PlateTimeline(lanes="entrada-izquierda")
+        for k in range(10):  # quieto en el carril de entrada: la chapa no crece ni se achica
+            tl.add(self.read("AB123CD", 200), 10 + k * 0.3, 960)
+        self.assertIsNone(tl.claim(13.5, "salida"))
+        self.assertEqual(tl.claim(13.5, "entrada").plate, "AB123CD")
+
+    def test_una_patente_una_vez_por_pasada(self):
+        from app import pairing
+        tl = pairing.PlateTimeline(lanes="entrada-izquierda")
+        for k in range(3):
+            tl.add(self.read("AM833DH", 200), 60.9 + k * 0.2, 960)
+        tl.add(self.read("WM833DH", 200), 64.8, 960)   # una letra mal: abre otro tramo
+        self.assertEqual(tl.claim(65.0, "entrada").plate, "AM833DH")
+        for k in range(3):
+            tl.add(self.read("AM833DH", 200), 65.2 + k * 0.2, 960)  # sigue viéndolo al pasar
+            tl.add(self.read("AD912FZ", 180), 66.9 + k * 0.2, 960)  # llega el siguiente
+        self.assertEqual(tl.claim(71.25, "entrada").plate, "AD912FZ")
+        for k in range(3):  # la vuelta (sale mucho después): esa sí vale
+            tl.add(self.read("AM833DH", 760), 95 + k * 0.2, 960)
+        self.assertEqual(tl.claim(96, "salida").plate, "AM833DH")
+
+
 class VideoSettingsTest(unittest.TestCase):
     def test_json_al_lado_del_video(self):
         video = TMP / "cam.mp4"
@@ -430,6 +462,42 @@ class JuegoTest(unittest.TestCase):
             real = (a["sale"] + juego.crossing_offset("up") - a["entra"] - juego.crossing_offset("down")) * 60
             self.assertLess(abs(s["duracion_seg"] - real), 30)
             self.assertEqual(s["monto"], calculate_amount(real, 1000, 15))
+
+    def test_cabina_valida_aperturas(self):
+        from app import juego
+        with self.assertRaises(juego.JuegoError):  # sale sin que le hayan abierto para entrar
+            juego.build_schedule([{"entra": 1, "espera": True, "sale": 20}])
+        with self.assertRaises(juego.JuegoError):  # abrieron antes de que llegara
+            juego.build_schedule([{"entra": 5, "espera": True, "abre_entrada": 4}])
+        schedule, seconds = juego.build_schedule([{"entra": 1, "espera": True}], duracion=30)
+        self.assertEqual(schedule[0][4][1], juego.NEVER)  # espera hasta el final
+        self.assertEqual(seconds, 30)
+
+    def test_cabina_autos_que_esperan_la_barrera(self):
+        """Modo cabina: los autos frenan en la barrera hasta que el jugador abre.
+
+        El 1 espera 4 s para entrar y 2,6 s para salir; el 2 espera 1,3 s y se queda; al 3
+        nunca le abren. El sistema tiene que ver 2 entradas y 1 salida, y cobrar la estadía
+        de cruce a cruce (con las esperas en la barrera incluidas)."""
+        from app import juego
+        down, up = juego.stop_offset("down"), juego.stop_offset("up")
+        autos = [{"color": "#c82828", "entra": 1.0, "espera": True, "abre_entrada": 1.0 + down + 4.0,
+                  "sale": 20.0, "abre_salida": 20.0 + up + 2.6},
+                 {"color": "#1e6ebe", "entra": 9.0, "espera": True, "abre_entrada": 12.0},
+                 {"color": "#e1e1e1", "entra": 15.0, "espera": True}]
+        name = juego.save(autos, folder=TMP / "cabina", duracion=34)
+        database.init_db()
+        database.reset_events()
+        database.set_pricing(1000, 15)
+        events = VideoProcessor(detector_kind="motion", time_scale=60).process(TMP / "cabina" / name, None)
+        self.assertEqual([e["tipo_evento"] for e in events], ["entrada", "entrada", "salida"])
+        a = autos[0]
+        cruza_in = a["abre_entrada"] + juego.crossing_offset("down") - down
+        cruza_out = a["abre_salida"] + juego.crossing_offset("up") - up
+        real = (cruza_out - cruza_in) * 60
+        salida = [e for e in database.list_events() if e["tipo_evento"] == "salida"][0]
+        self.assertLess(abs(salida["duracion_seg"] - real), 30)
+        self.assertEqual(salida["monto"], calculate_amount(real, 1000, 15))
 
     def test_valida_patentes(self):
         from app import juego

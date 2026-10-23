@@ -104,6 +104,8 @@ def video_settings(video_path: Path, defaults: dict) -> dict:
     "detector_patentes" eligen otros modelos para ese video (los de las chapas dibujadas).
     Con "frontal": "otro.mp4", ese video es la cámara frontal de este (las patentes se
     leen ahí) y "desfase": segundos que la frontal empezó a grabar antes (negativo: después).
+    Con "frontal_carriles": "entrada-izquierda" (o "entrada-derecha"), la frontal ve los dos
+    carriles y de qué lado de la imagen está la chapa dice si el auto entra o sale.
     Lo que no esté en el archivo queda con el valor de `defaults`
     (claves: line, entry_sign, min_area, plates, frontal, offset).
     """
@@ -126,4 +128,6 @@ def video_settings(video_path: Path, defaults: dict) -> dict:
         if data.get("frontal"):
             opts["frontal"] = sidecar.parent / Path(str(data["frontal"])).name  # siempre en la misma carpeta
             opts["offset"] = float(data.get("desfase", 0))
+            if data.get("frontal_carriles") in ("entrada-izquierda", "entrada-derecha"):
+                opts["frontal_lanes"] = data["frontal_carriles"]
     return opts

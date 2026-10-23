@@ -108,7 +108,8 @@ class VideoProcessor:
         """
         opts = config.video_settings(Path(video_path), {
             "line": self.line_rel, "entry_sign": self.entry_sign, "min_area": self.min_area,
-            "plates": config.PLATES, "frontal": None, "offset": 0.0, "ocr": None, "plate_detector": None})
+            "plates": config.PLATES, "frontal": None, "offset": 0.0, "ocr": None, "plate_detector": None,
+            "frontal_lanes": None})
         line_rel, entry_sign, min_area = opts["line"], opts["entry_sign"], opts["min_area"]
         want_plates = opts["plates"] or bool(opts["frontal"])
         reader = plates.create_reader(opts["ocr"], opts["plate_detector"]) if want_plates else None
@@ -116,7 +117,8 @@ class VideoProcessor:
                        if want_plates and reader is None else "")
         self._plate_boxes = []
         # Con cámara frontal, las patentes se leen ahí; si no, en este mismo video.
-        frontal = pairing.FrontalFile(opts["frontal"], opts["offset"], reader, live=realtime) \
+        frontal = pairing.FrontalFile(opts["frontal"], opts["offset"], reader, live=realtime,
+                                      lanes=opts["frontal_lanes"]) \
             if opts["frontal"] and reader else None
         same_cam = reader if not frontal else None
         same_async = plates.AsyncPlates(same_cam) if same_cam and realtime else None
