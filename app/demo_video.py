@@ -53,9 +53,11 @@ class SensorNoise:
 
     Calcularlo cuadro por cuadro era lo más lento de armar un video (en un servidor
     chico, minutos). Con el banco, sumar el ruido son dos operaciones saturadas de OpenCV.
+    Son 8 cuadros: con 48, las dos cámaras del juego ocupaban ~215 MB y en Render (512 MB)
+    la app se quedaba sin memoria.
     """
 
-    def __init__(self, rng: np.random.Generator, shape, sigma: float, frames: int = 48):
+    def __init__(self, rng: np.random.Generator, shape, sigma: float, frames: int = 8):
         self.bank = []
         for _ in range(frames):
             n = np.rint(rng.normal(0, sigma, shape))
@@ -104,16 +106,19 @@ def draw_car(frame, cx, cy, color, facing_down):
     cv2.rectangle(frame, (x1 + 12, min(front, back) + 22), (x2 - 12, max(front, back) - 4), shade, -1)  # techo
 
 
-def generate(out: Path, seconds: float, seed: int = 7, schedule=None) -> None:
-    schedule = schedule or SCHEDULE
-    rng = np.random.default_rng(seed)
-    bg = make_background(rng)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    writer = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"mp4v"), FPS, (W, H))
-    noise = SensorNoise(rng, (H, W, 3), 3)
-    for i in range(int(seconds * FPS)):
+class Renderer:
+    """Dibuja la cámara cenital cuadro por cuadro (para un archivo o para la partida en vivo)."""
+
+    def __init__(self, seed: int = 7):
+        rng = np.random.default_rng(seed)
+        self.bg = make_background(rng)
+        self.noise = SensorNoise(rng, (H, W, 3), 3)
+
+    def frame(self, i: int, schedule) -> np.ndarray:
+        """El cuadro i (a FPS cuadros por segundo) con los autos de `schedule`:
+        (segundo, sentido, color BGR[, pausa]); "down" entra, "up" sale."""
         t = i / FPS
-        frame = bg.copy()
+        frame = self.bg.copy()
         for start, direction, color, *rest in schedule:
             dt = t - start
             if dt < 0:
@@ -126,7 +131,16 @@ def generate(out: Path, seconds: float, seed: int = 7, schedule=None) -> None:
             if -CAR_H < cy < H + CAR_H:
                 draw_car(frame, cx, cy, color, direction == "down")
         # Ruido de sensor + leve cambio de brillo, como una cámara barata.
-        writer.write(noise.apply(frame, i, 3 * np.sin(t * 1.3)))
+        return self.noise.apply(frame, i, 3 * np.sin(t * 1.3))
+
+
+def generate(out: Path, seconds: float, seed: int = 7, schedule=None) -> None:
+    schedule = schedule or SCHEDULE
+    renderer = Renderer(seed)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    writer = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"mp4v"), FPS, (W, H))
+    for i in range(int(seconds * FPS)):
+        writer.write(renderer.frame(i, schedule))
     writer.release()
     print(f"Video generado: {out} ({seconds:.0f} s, {W}x{H} @ {FPS} fps, "
           f"{sum(1 for s in schedule if s[1] == 'down')} entradas y {sum(1 for s in schedule if s[1] == 'up')} salidas)")

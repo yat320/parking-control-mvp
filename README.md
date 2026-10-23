@@ -71,6 +71,21 @@ que el video de prueba), lo procesa el detector de verdad y muestra, salida por 
   medio armar no aparece en la lista (no se podría abrir).
 - Teclado: `E` entra un auto, `1` a `9` saca al de ese lugar de la lista.
 
+## El simulador se procesa en vivo
+
+En `/juego` y `/cabina`, apenas entra el primer auto el servidor arranca a mirar la partida
+(`app/vivo.py`): el navegador manda cada cambio (entró, salió, le abrieron) y dos cámaras virtuales
+dibujan cada cuadro en el momento, 1,5 s atrás del juego para que los cambios lleguen antes de
+dibujarse. El sistema las procesa como cámaras de verdad: los eventos aparecen en el panel uno o dos
+segundos después de que el auto cruza la línea, y al terminar el resultado está en ~3 s. Si el sistema
+está ocupado con otro video, la página procesa la partida al terminar, como antes. Si la pestaña se
+cierra, la partida en vivo se da por terminada al minuto.
+
+Memoria (Render da 512 MB): el ruido de cámara de los videos generados usa un banco de 8 cuadros
+(con 48 llegaba a ~360 MB solo armando una partida) y la imagen fija `MALLOC_ARENA_MAX=2`. Medido
+con 512 MB: varias partidas con patentes seguidas quedan en ~300 MB. Los modelos de patentes del
+simulador se cargan al arrancar, en segundo plano.
+
 ## Modo cabina: humano contra sistema (/cabina)
 
 Los autos llegan solos (uno cada 4 a 8 s) y **frenan en la barrera**; el jugador hace de cabinero:

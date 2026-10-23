@@ -5,7 +5,9 @@ FROM python:3.11-slim
 # Hugging Face corre los contenedores con el usuario 1000.
 RUN useradd -m -u 1000 user
 USER user
-ENV HOME=/home/user PATH=/home/user/.local/bin:$PATH PYTHONUNBUFFERED=1
+# MALLOC_ARENA_MAX: con varios hilos (video, patentes, web), glibc reserva memoria de más por
+# hilo y no la devuelve; en Render (512 MB) eso termina en reinicios.
+ENV HOME=/home/user PATH=/home/user/.local/bin:$PATH PYTHONUNBUFFERED=1 MALLOC_ARENA_MAX=2
 WORKDIR /home/user/app
 
 COPY --chown=user requirements.txt .

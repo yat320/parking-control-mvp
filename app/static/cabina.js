@@ -263,12 +263,28 @@ function cuadro() {
   if (!terminado && t0 != null) $("progreso").style.width = Math.min(100, t / DURACION * 100) + "%";
   requestAnimationFrame(cuadro);
 }
-setInterval(() => { if (t0 != null && !terminado) pintar(); }, 250);
+setInterval(() => {
+  if (t0 == null || terminado) return;
+  pintar();
+  Vivo.mandar(partida());  // solo manda si cambió algo (llegó, le abrieron, pidió salir)
+}, 250);
+setInterval(() => { if (Vivo.activo && !terminado) Vivo.mandar(partida(), null, true); }, 10000);
+setInterval(async () => {
+  if (!Vivo.activo) return;
+  try {
+    const c = await Vivo.contar();
+    $("sistema-vivo").textContent = `El sistema, en vivo: ${c.entradas} entradas y ${c.salidas} salidas vistas (también en el panel).`;
+  } catch (e) {}
+}, 1500);
 
 // ---------- terminar: el sistema procesa la misma partida y se compara ----------
 
 let baseId = 0;
 const conPatentes = () => $("frontal-on").checked;
+
+// El turno tal como lo manda al servidor (a /api/vivo/autos mientras se juega, o a /api/juego).
+const partida = () => autos.filter((a) => a.entra != null).map((a) => ({ color: a.color, entra: a.entra, espera: true,
+  patente: a.patente, abre_entrada: a.abreIn, sale: a.sale, abre_salida: a.abreOut }));
 
 async function terminar() {
   if (terminado || t0 == null) return;
@@ -280,6 +296,14 @@ async function terminar() {
   $("error").textContent = "";
   const jugados = autos.filter((a) => a.entra != null);
   if (!jugados.length) return aviso("No llegó a entrar ningún auto. Tocá Jugar otro turno.");
+  if (Vivo.activo) {  // el sistema ya estuvo mirando el turno: solo faltan los últimos cruces
+    baseId = Vivo.baseId;
+    await Vivo.mandar(partida(), +tFin.toFixed(2));
+    aviso("El sistema termina de mirar los últimos autos…");
+    $("cancha").hidden = true;
+    const feed = $("feed"); feed.hidden = false; feed.src = "/video_feed?" + Date.now();
+    return esperar(Vivo.NOMBRE, true);
+  }
   try {
     const est = await api("/api/estado");
     if (est.procesando) throw new Error("el sistema está procesando otro video. Esperá a que termine y probá de nuevo.");
@@ -287,11 +311,7 @@ async function terminar() {
     const ultimos = await api("/api/eventos?limit=1");
     baseId = ultimos.length ? ultimos[0].id : 0;
     aviso(conPatentes() ? "Armando los videos de las dos cámaras…" : "Armando el video del turno…");
-    const { nombre } = await api("/api/juego", {
-      patentes: conPatentes(), duracion: +tFin.toFixed(2),
-      autos: jugados.map((a) => ({ color: a.color, entra: a.entra, espera: true, patente: a.patente,
-        abre_entrada: a.abreIn, sale: a.sale, abre_salida: a.abreOut })),
-    });
+    const { nombre } = await api("/api/juego", { patentes: conPatentes(), duracion: +tFin.toFixed(2), autos: partida() });
     await api("/api/procesar", { video: nombre, guardar_video: false });
     aviso("El sistema está mirando el turno, en vivo…");
     $("cancha").hidden = true;
@@ -307,7 +327,9 @@ async function esperar(nombre, visto) {
     const e = await api("/api/estado");
     if (e.error) throw new Error(e.error);
     $("progreso").style.width = (e.progreso * 100) + "%";
-    $("estado-proc").textContent = e.procesando ? `El sistema va por el ${Math.round(e.progreso * 100)}% del turno… ${e.ultimo_mensaje || ""}` : "";
+    $("estado-proc").textContent = !e.procesando ? ""
+      : nombre === Vivo.NOMBRE ? `El sistema termina de mirar el turno… ${e.ultimo_mensaje || ""}`
+      : `El sistema va por el ${Math.round(e.progreso * 100)}% del turno… ${e.ultimo_mensaje || ""}`;
     visto = visto || e.procesando;
     if (e.video === nombre && !e.procesando && (visto || e.progreso >= 0.99)) return comparar();
   } catch (err) {
@@ -393,6 +415,10 @@ async function comparar() {
 $("btn-empezar").addEventListener("click", () => {
   if (t0 != null) return;
   t0 = performance.now();
+  Vivo.empezar(conPatentes(), 0).then((ok) => {
+    if (ok) $("frontal-on").disabled = true;
+    else $("sistema-vivo").textContent = "El sistema está ocupado con otro video: va a mirar el turno cuando termines.";
+  });
   $("btn-empezar").disabled = true;
   $("btn-terminar").disabled = false;
   aviso("Turno abierto. Ya llega el primer auto.");

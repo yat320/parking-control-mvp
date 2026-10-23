@@ -69,6 +69,40 @@ class EndToEndTest(unittest.TestCase):
         self.assertTrue((TMP / "out.mp4").stat().st_size > 0)
 
 
+class VivoTest(unittest.TestCase):
+    """La partida del simulador se procesa mientras se juega (app/vivo.py)."""
+
+    def test_eventos_mientras_se_juega(self):
+        import threading
+        import time
+        from app import juego, vivo
+        database.init_db()
+        database.reset_events()
+        database.set_pricing(1000, 15)
+        game = vivo.LiveGame(patentes=False, t=1.0)   # el navegador ya está en el segundo 1
+        proc = VideoProcessor(detector_kind="motion", time_scale=60)
+        th = threading.Thread(target=proc.process, args=(Path("partida en vivo"),),
+                              kwargs={"realtime": True, "source": vivo.VirtualCamera(game), "settings": vivo.settings(game)})
+        th.start()
+        auto = {"color": "#c82828", "entra": 1.0}
+        game.update([auto])                            # entra ya
+        time.sleep(1.0 + juego.crossing_offset("down") + vivo.DELAY + 1.0)
+        tipos = [e["tipo_evento"] for e in database.list_events()]
+        self.assertEqual(tipos, ["entrada"])          # aparece mientras se juega, no al final
+        auto["sale"] = 10.0
+        while game.now() + vivo.DELAY < 10.0:         # el navegador avisa cuando sale
+            time.sleep(0.1)
+        game.update([auto])
+        game.update([auto], fin=11.0)
+        th.join(timeout=60)
+        self.assertFalse(th.is_alive())
+        salida = [e for e in database.list_events() if e["tipo_evento"] == "salida"]
+        self.assertEqual(len(salida), 1)
+        real = (10.0 + juego.crossing_offset("up") - 1.0 - juego.crossing_offset("down")) * 60
+        self.assertLess(abs(salida[0]["duracion_seg"] - real), 30)
+        self.assertEqual(salida[0]["monto"], calculate_amount(real, 1000, 15))
+
+
 class PairingCabinaTest(unittest.TestCase):
     """Emparejar patentes cuando los autos esperan la barrera (modo cabina)."""
 

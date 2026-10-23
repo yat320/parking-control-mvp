@@ -87,31 +87,44 @@ def generate(path: Path, seconds: float = SECONDS, lead: float = 0.0, schedule=N
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     out = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), FPS, (W, H))
-    from .demo_video import SensorNoise
-    rng = np.random.default_rng(7)
-    noise = SensorNoise(rng, (H, W, 3), 3)
-    base = np.full((H, W, 3), (95, 100, 105), np.uint8)
-    cv2.rectangle(base, (0, 0), (W, 110), (150, 140, 120), -1)  # pared al fondo
-    from .demo_video import paused
-    plates = {s[2]: plate_image(s[2]) for s in schedule}
-    travel = (H + CAR_H) / SPEED
+    renderer = Renderer(lanes, lead)
     for i in range(int((seconds + lead) * FPS)):
-        t = i / FPS - lead
-        frame = base.copy()
+        out.write(renderer.frame(i, schedule))
+    out.release()
+    return path
+
+
+class Renderer:
+    """Dibuja la cámara frontal cuadro por cuadro (para un archivo o para la partida en vivo)."""
+
+    def __init__(self, lanes: bool = False, lead: float = 0.0):
+        from .demo_video import SensorNoise
+        self.lanes, self.lead = lanes, lead
+        self.noise = SensorNoise(np.random.default_rng(7), (H, W, 3), 3)
+        self.base = np.full((H, W, 3), (95, 100, 105), np.uint8)
+        cv2.rectangle(self.base, (0, 0), (W, 110), (150, 140, 120), -1)  # pared al fondo
+        self.plates = {}
+
+    def frame(self, i: int, schedule) -> np.ndarray:
+        """El cuadro i con los autos de `schedule`: (segundo, sentido, patente, color BGR[, pausa])."""
+        from .demo_video import paused
+        t = i / FPS - self.lead
+        travel = (H + CAR_H) / SPEED
+        frame = self.base.copy()
         for start, way, plate, color, *rest in schedule:
             k = t - start
             if k >= 0:
                 k = paused(k, rest[0] if rest else None)  # el que espera la barrera, quieto
             if 0 <= k <= travel:
+                if plate not in self.plates:
+                    self.plates[plate] = plate_image(plate)
                 cy = -CAR_H // 2 + int(k * SPEED) if way == "down" else H + CAR_H // 2 - int(k * SPEED)
-                cx = W // 2 + ((-LANE_DX if way == "down" else LANE_DX) if lanes else 0)
+                cx = W // 2 + ((-LANE_DX if way == "down" else LANE_DX) if self.lanes else 0)
                 # Con carriles, perspectiva: el que se acerca (baja) crece y el que se va se achica,
                 # como en una cámara real (el emparejamiento usa eso para separar entrada y salida).
-                scale = 0.7 + 0.5 * min(1.0, max(0.0, cy / H)) if lanes else 1.0
-                draw_car(frame, cx, cy, color, plates[plate], scale)
-        out.write(noise.apply(frame, i))
-    out.release()
-    return path
+                scale = 0.7 + 0.5 * min(1.0, max(0.0, cy / H)) if self.lanes else 1.0
+                draw_car(frame, cx, cy, color, self.plates[plate], scale)
+        return self.noise.apply(frame, i)
 
 
 def generate_pair(folder: Path, lead: float = 0.0) -> Path:

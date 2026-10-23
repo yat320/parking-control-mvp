@@ -59,6 +59,7 @@
         </div>
         <label class="check"><input type="checkbox" id="frontal-on" checked>
           <span>El sistema usa la cámara frontal para leer patentes <small>(sin ella cobra la salida al que entró primero)</small></span></label>
+        <p id="sistema-vivo" class="meta vivo"></p>
         <p id="msg" class="meta" aria-live="polite">Tocá <b>Abrir la cabina</b> para empezar el turno.</p>
       </div>
       <p id="estado-proc" class="meta" aria-live="polite"></p>
@@ -102,6 +103,7 @@
     const ESCALA = {{ time_scale }};
     const DURACION = {{ duracion }};
   </script>
+  <script src="/static/vivo.js"></script>
   <script src="/static/cabina.js"></script>
 </body>
 </html>

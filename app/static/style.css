@@ -112,3 +112,4 @@ button.auto small { white-space:nowrap; }
 .planilla-botones small { color:var(--muted); }
 table.planilla td, table.planilla th { padding:5px 6px; }
 td.si { color:var(--ok); } td.no { color:var(--bad); } td.si small, td.no small { color:var(--muted); }
+p.vivo { color:var(--ok); }

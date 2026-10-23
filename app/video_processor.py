@@ -89,27 +89,34 @@ class VideoProcessor:
         self._stop.set()
 
     def process(self, video_path: Path, output_path: Path | None = None, realtime: bool = False,
-                show: bool = False) -> list[dict]:
-        """Procesa el video entero. Devuelve los eventos registrados (ver _process)."""
+                show: bool = False, source=None, settings: dict | None = None) -> list[dict]:
+        """Procesa el video entero. Devuelve los eventos registrados (ver _process).
+
+        `source`: en vez de abrir `video_path`, leer de ahí (algo con read/grab/get como
+        cv2.VideoCapture; la partida en vivo del simulador, app/vivo.py). `settings`: los
+        ajustes del video, en vez de leerlos del .json de al lado.
+        """
         # Ocupado desde ya: cargar los modelos de patentes tarda unos segundos y en ese
         # rato la web no tiene que dejar arrancar otro video (por ejemplo, con un doble toque).
         self.running = True
         try:
-            return self._process(video_path, output_path, realtime, show)
+            return self._process(video_path, output_path, realtime, show, source, settings)
         finally:
             self.running = False
 
-    def _process(self, video_path: Path, output_path: Path | None, realtime: bool, show: bool) -> list[dict]:
+    def _process(self, video_path: Path, output_path: Path | None, realtime: bool, show: bool,
+                 source=None, settings: dict | None = None) -> list[dict]:
         """Procesa el video entero. Devuelve los eventos registrados.
 
         Si al lado del video hay un .json con el mismo nombre (por ejemplo
         videos/calle_real.json), sus valores de línea, sentido y área mínima
         reemplazan a los de config.py solo para ese video.
         """
-        opts = config.video_settings(Path(video_path), {
+        defaults = {
             "line": self.line_rel, "entry_sign": self.entry_sign, "min_area": self.min_area,
             "plates": config.PLATES, "frontal": None, "offset": 0.0, "ocr": None, "plate_detector": None,
-            "frontal_lanes": None})
+            "frontal_lanes": None}
+        opts = {**defaults, **settings} if settings is not None else config.video_settings(Path(video_path), defaults)
         line_rel, entry_sign, min_area = opts["line"], opts["entry_sign"], opts["min_area"]
         want_plates = opts["plates"] or bool(opts["frontal"])
         reader = plates.create_reader(opts["ocr"], opts["plate_detector"]) if want_plates else None
@@ -123,7 +130,7 @@ class VideoProcessor:
         same_cam = reader if not frontal else None
         same_async = plates.AsyncPlates(same_cam) if same_cam and realtime else None
         pending_pair = []  # (evento, segundo) registrados sin patente, esperando que la frontal la vea
-        cap = cv2.VideoCapture(str(video_path))
+        cap = source if source is not None else cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             raise FileNotFoundError(f"No se pudo abrir el video: {video_path}")
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
@@ -156,8 +163,10 @@ class VideoProcessor:
         events, message, message_until = [], "", -1.0
         self._stop.clear()
         self.running = True
-        frame_idx, t0 = 0, time.monotonic()
-        cams = f"cámara frontal {Path(opts['frontal']).name} (desfase {opts['offset']:+g} s)" if frontal else \
+        # En vivo se va al ritmo de la fuente (la partida en vivo dice cuándo arrancó su reloj).
+        frame_idx, t0 = 0, getattr(cap, "start_time", None) or time.monotonic()
+        frontal_name = Path(opts["frontal"]).name if isinstance(opts["frontal"], (str, Path)) else "en vivo"
+        cams = f"cámara frontal {frontal_name} (desfase {opts['offset']:+g} s)" if frontal else \
             ("sí" if same_cam else "no")
         print(f"[VIDEO] {video_path} {w}x{h} @ {fps:.1f} fps, detector={detector.name}, "
               f"línea={tuple(line_rel)}, área mínima={min_area}, patentes={cams}", flush=True)

@@ -147,9 +147,10 @@ class FrontalFile:
 
     def __init__(self, path: Path, offset: float, reader: plates.PlateReader, live: bool = False,
                  lanes: str | None = None):
-        self.cap = cv2.VideoCapture(str(path))
+        # `path` puede ser ya una cámara abierta (la partida en vivo, app/vivo.py).
+        self.cap = path if hasattr(path, "read") else cv2.VideoCapture(str(path))
         if not self.cap.isOpened():
-            raise FileNotFoundError(f"No se pudo abrir el video de la cámara frontal: {Path(path).name}")
+            raise FileNotFoundError(f"No se pudo abrir el video de la cámara frontal: {getattr(path, 'name', path)}")
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 25.0
         self.offset = offset
         self.reader = reader

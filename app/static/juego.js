@@ -68,10 +68,14 @@ function puedeSalir(a) {
   return falta > 0 ? `Esperá ${falta.toFixed(1)} s: el carril de salida está ocupado.` : "";
 }
 
+// La partida tal como la manda al servidor (a /api/vivo/autos mientras se juega, o a /api/juego).
+const partida = () => autos.map(({ color, entra, sale, patente }) => ({ color, entra, sale, patente }));
+
 function entrar() {
   const no = puedeEntrar();
   if (no) return aviso(no);
-  if (t0 == null) t0 = performance.now() - LEAD * 1000;
+  const primero = t0 == null;
+  if (primero) t0 = performance.now() - LEAD * 1000;
   const n = autos.length + 1;
   const [nombreColor, color] = COLORES[(n - 1) % COLORES.length];
   autos.push({ n, nombre: `Auto ${n} ${nombreColor}`, color, patente: patenteNueva(), entra: +ahora().toFixed(2), sale: null });
@@ -79,6 +83,15 @@ function entrar() {
   aviso(`Entró el auto ${n}. Cuando termine de pasar, tocá "Sacar" en la lista para que salga.`);
   $("btn-terminar").disabled = false;
   listas();
+  if (primero) {
+    // El sistema mira la partida mientras se juega: los eventos aparecen en el panel al toque.
+    Vivo.empezar(conPatentes(), ahora()).then((ok) => {
+      if (ok) Vivo.mandar(partida());
+      else $("sistema-vivo").textContent = "El sistema está ocupado con otro video: va a mirar la partida cuando termines.";
+    });
+  } else {
+    Vivo.mandar(partida());
+  }
 }
 
 function salir(n) {
@@ -87,6 +100,7 @@ function salir(n) {
   const no = puedeSalir(a);
   if (no) return aviso(no);
   a.sale = +ahora().toFixed(2);
+  Vivo.mandar(partida());
   aviso(`Sale ${a.nombre}: ${minutos(estadia(a, a.sale + CRUZA_SALIDA))}, ${money(cobro(estadia(a, a.sale + CRUZA_SALIDA)))}.`);
   listas();
 }
@@ -244,6 +258,18 @@ function cuadro() {
 
 // refresca las listas (minutos y montos) cada medio segundo
 setInterval(() => { if (!terminado) listas(); }, 500);
+// En vivo: lo que va viendo el sistema, y un aviso cada 10 s para que no dé la partida por abandonada.
+setInterval(async () => {
+  if (!Vivo.activo || terminado) return;
+  Vivo.mandar(partida(), null, true);
+}, 10000);
+setInterval(async () => {
+  if (!Vivo.activo) return;
+  try {
+    const c = await Vivo.contar();
+    $("sistema-vivo").textContent = `El sistema, en vivo: ${c.entradas} entradas y ${c.salidas} salidas vistas (también en el panel).`;
+  } catch (e) {}
+}, 1500);
 
 // ---------- mandar la partida al sistema y comparar ----------
 
@@ -256,6 +282,14 @@ async function terminar() {
   $("btn-terminar").disabled = true; $("btn-entra").disabled = true; $("colar").disabled = true;
   listas();
   $("error").textContent = "";
+  if (Vivo.activo) {  // el sistema ya la estuvo mirando: solo falta que termine de ver los últimos cruces
+    baseId = Vivo.baseId;
+    await Vivo.mandar(partida(), +tFin.toFixed(2));
+    aviso("El sistema termina de mirar los últimos autos…");
+    $("cancha").hidden = true; $("frontal").hidden = true;
+    const feed = $("feed"); feed.hidden = false; feed.src = "/video_feed?" + Date.now();
+    return esperar(Vivo.NOMBRE, true);
+  }
   try {
     // Si quedaron autos "adentro" de otra prueba, el sistema les cobraría a ellos las salidas
     // de esta partida (empareja con la entrada más vieja): se arranca de cero.
@@ -269,10 +303,7 @@ async function terminar() {
     baseId = ultimos.length ? ultimos[0].id : 0;
     aviso("Armando el video de la partida…");
     aviso(conPatentes() ? "Armando los videos de las dos cámaras…" : "Armando el video de la partida…");
-    const { nombre } = await api("/api/juego", {
-      patentes: conPatentes(),
-      autos: autos.map(({ color, entra, sale, patente }) => ({ color, entra, sale, patente })),
-    });
+    const { nombre } = await api("/api/juego", { patentes: conPatentes(), autos: partida() });
     await api("/api/procesar", { video: nombre, guardar_video: false });
     aviso("");
     $("cancha").hidden = true; $("frontal").hidden = true;
@@ -291,7 +322,7 @@ async function esperar(nombre, visto) {
     if (e.error) throw new Error(e.error);
     $("progreso").style.width = (e.progreso * 100) + "%";
     $("estado-proc").textContent = e.procesando
-      ? `El sistema está mirando la partida (${Math.round(e.progreso * 100)}%)… ${e.ultimo_mensaje || ""}` +
+      ? `El sistema está mirando la partida${nombre === Vivo.NOMBRE ? "" : ` (${Math.round(e.progreso * 100)}%)`}… ${e.ultimo_mensaje || ""}` +
         (conPatentes() ? " En un servidor chico algunas patentes pueden quedar sin leer." : "")
       : "";
     visto = visto || e.procesando;

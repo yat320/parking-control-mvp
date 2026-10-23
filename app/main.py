@@ -16,6 +16,8 @@ Rutas:
   POST /api/barrera/abrir apertura manual (como el botón de la cabina)
   POST /api/reset         borra los eventos y cierra la barrera
   GET  /juego             simulador jugable: manejás los autos y la partida se procesa
+  POST /api/vivo/empezar  {"patentes": true, "t": 1.0} el simulador se procesa mientras se juega
+  POST /api/vivo/autos    {"autos": [...], "fin": null} la partida hasta ahora (con "fin", terminó)
   POST /api/juego         {"autos": [{"color": "#c83232", "entra": 1.0, "sale": 12.5, "patente": "AB123CD"}, ...],
                            "patentes": true}  (con patentes arma también la cámara frontal)
                           arma el video de la partida en videos/ y devuelve su nombre
@@ -33,7 +35,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from . import config, database, juego, uploads
+from . import config, database, juego, uploads, vivo
 from .barrier_controller import BarrierController
 from .demo_video import generate as generate_demo_video
 from .video_processor import VideoProcessor
@@ -47,6 +49,10 @@ async def lifespan(_app):
     if not config.VIDEO_PATH.exists():
         print(f"No existe {config.VIDEO_PATH}: genero el video de prueba.")
         generate_demo_video(config.VIDEO_PATH, 40)
+    # Los modelos de patentes del simulador, cargados de entrada y en segundo plano: si se
+    # cargan al empezar la primera partida, en un servidor chico esos segundos atrasan al
+    # sistema justo cuando entran los primeros autos (y se pierde alguno).
+    threading.Thread(target=_preload_plates, daemon=True).start()
     yield
     processor.stop()
 
@@ -85,6 +91,11 @@ def _list_videos() -> list[dict]:
         videos.append({"nombre": p.name, "descripcion": desc})
     # La cámara frontal de un par no se procesa sola: va con el video de su barrera.
     return [v for v in videos if v["nombre"] not in frontales]
+
+
+def _preload_plates() -> None:
+    from . import demo_plates, plates
+    plates.create_reader(demo_plates.DRAWN_OCR, demo_plates.DRAWN_DETECTOR)
 
 
 def _run_processing(video: Path, save_output: bool) -> None:
@@ -259,6 +270,61 @@ def guardar_juego(body: JuegoIn):
 @app.post("/api/detener")
 def detener():
     processor.stop()
+    if _live:
+        _live.close()
+    return {"ok": True}
+
+
+# ---------- partida en vivo del simulador (app/vivo.py) ----------
+
+LIVE_NAME = "partida en vivo"
+_live: vivo.LiveGame | None = None
+
+
+def _run_live(game: vivo.LiveGame) -> None:
+    global _last_error
+    try:
+        _last_error = ""
+        processor.process(Path(LIVE_NAME), None, realtime=True, source=vivo.VirtualCamera(game),
+                          settings=vivo.settings(game))
+    except Exception as e:
+        _last_error = str(e)
+        print(f"[ERROR] {e}", flush=True)
+    finally:
+        game.close()
+
+
+class VivoIn(BaseModel):
+    patentes: bool = False
+    t: float = Field(default=0.0, ge=0, le=juego.MAX_SECONDS)  # segundo del juego en el navegador
+
+
+@app.post("/api/vivo/empezar")
+def vivo_empezar(body: VivoIn):
+    """Arranca a procesar el simulador mientras se juega (los eventos aparecen en el panel al toque)."""
+    global _thread, _current_video, _live
+    if processor.running:
+        raise HTTPException(409, "El sistema está procesando otro video.")
+    _live = vivo.LiveGame(body.patentes, body.t)
+    _current_video = LIVE_NAME
+    _thread = threading.Thread(target=_run_live, args=(_live,), daemon=True)
+    _thread.start()
+    return {"video": LIVE_NAME}
+
+
+class VivoAutosIn(BaseModel):
+    autos: list[AutoJuego] = []
+    fin: float | None = Field(default=None, ge=0)
+
+
+@app.post("/api/vivo/autos")
+def vivo_autos(body: VivoAutosIn):
+    if _live is None or _live.closed:
+        raise HTTPException(409, "La partida en vivo ya terminó.")
+    try:
+        _live.update([a.model_dump() for a in body.autos], body.fin)
+    except juego.JuegoError as e:
+        raise HTTPException(400, str(e))
     return {"ok": True}
 
 
@@ -284,6 +350,8 @@ def abrir_barrera():
 @app.post("/api/reset")
 def reset():
     processor.stop()
+    if _live:
+        _live.close()
     if _thread:
         _thread.join(timeout=5)
     database.reset_events()
