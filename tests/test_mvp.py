@@ -192,6 +192,35 @@ class UploadTest(unittest.TestCase):
         self.assertEqual([e["tipo_evento"] for e in events],
                          ["entrada", "entrada", "salida", "entrada", "salida", "salida"])
 
+    def test_subido_de_celular_se_achica_al_subir(self):
+        """1280x720 a 40 cuadros por segundo, en .mov: queda .mp4 de 640 px a ~15 cps y da los mismos eventos."""
+        import cv2
+        celu = TMP / "celu.mov"
+        cap = cv2.VideoCapture(str(self.demo))
+        out = cv2.VideoWriter(str(celu), cv2.VideoWriter_fourcc(*"mp4v"), 40, (1280, 720))
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            big = cv2.resize(frame, (1280, 720))
+            out.write(big)
+            out.write(big)  # 20 -> 40 cuadros por segundo, misma duración
+        cap.release()
+        out.release()
+        nombre = self.subir(nombre="celu.mov", datos=celu.read_bytes())
+        self.assertTrue(nombre.endswith(".mp4"))
+        self.assertEqual(sorted(p.name for p in self.folder.iterdir()), sorted([nombre, nombre[:-4] + ".json"]))
+        cap = cv2.VideoCapture(str(self.folder / nombre))
+        self.assertEqual(int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), 640)
+        self.assertAlmostEqual(cap.get(cv2.CAP_PROP_FPS), 13.33, places=1)  # 40 / 3
+        self.assertAlmostEqual(cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS), 40, delta=0.5)
+        cap.release()
+        database.init_db()
+        database.reset_events()
+        events = VideoProcessor(detector_kind="motion", time_scale=60).process(self.folder / nombre)
+        self.assertEqual([e["tipo_evento"] for e in events],
+                         ["entrada", "entrada", "salida", "entrada", "salida", "salida"])
+
 
 class PlatesTest(unittest.TestCase):
     """Patentes: formato, votos y emparejar la salida por patente (sin el lector)."""

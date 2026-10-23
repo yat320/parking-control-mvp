@@ -141,8 +141,10 @@ procesar**: se sube con barra de progreso y arranca solo.
   video*), y queda en el selector. Solo se guardan los últimos 5 (`PARKING_UPLOAD_KEEP`).
 - Es una demo compartida: lo que se sube lo ven todos los que entran, y en Render se borra
   cuando la app se reinicia o se duerme.
-- Los videos de más de 640 px de ancho se achican antes de detectar (`PARKING_MAX_WIDTH`), así un
-  video de celular en 1080p no tarda una eternidad en un servidor chico.
+- Al subirlo, el video se achica una sola vez a 640 px y 15 cuadros por segundo (1280 px si lee
+  patentes; `PARKING_UPLOAD_WIDTH`, `PARKING_UPLOAD_FPS`): decodificar 1080p cuadro por cuadro no entra
+  en un servidor chico. Medido con el procesador de Render gratis: un video de celular de 90 MB y 35 s
+  tarda ~2 min en prepararse y después se procesa en vivo. El máximo es 150 MB (`PARKING_UPLOAD_MB`).
 - Si un video de iPhone no se puede leer: Ajustes → Cámara → Formatos → *Más compatible*.
 
 ## Leer patentes (cámara frontal)

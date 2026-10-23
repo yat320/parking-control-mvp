@@ -64,6 +64,11 @@ def save(fileobj, filename: str | None, orientacion: str, invertir: bool, folder
                 _write(frontal, fdest, written)
             except UploadError as e:
                 raise UploadError(f"Cámara frontal: {e}")
+        # Achicar una sola vez, ahora: después se procesa en vivo aunque el servidor sea chico.
+        reads_plates = bool(patentes) and not fdest
+        dest = shrink(dest, config.UPLOAD_PLATES_WIDTH if reads_plates else config.UPLOAD_WIDTH, written)
+        if fdest:
+            fdest = shrink(fdest, config.UPLOAD_PLATES_WIDTH, written)
     except BaseException:
         for p in written:
             p.unlink(missing_ok=True)
@@ -100,6 +105,50 @@ def _write(fileobj, dest: Path, written: list) -> float:
                 raise UploadError(f"El video pesa más de {config.UPLOAD_MAX_MB} MB. Grabá uno más corto.")
             out.write(chunk)
     return check_video(dest)
+
+
+def shrink(path: Path, width: int, written: list) -> Path:
+    """Si el video es más ancho que `width` o tiene más de UPLOAD_FPS cuadros por segundo, lo
+    reescribe achicado (como .mp4) y borra el original. Devuelve el archivo que queda.
+
+    El detector achica cada cuadro de todos modos (y mira de a 15 por segundo de sobra); lo
+    caro es decodificar el video grande, y eso conviene hacerlo una sola vez.
+    """
+    cap = cv2.VideoCapture(str(path))  # OpenCV ya endereza los videos de celular grabados de costado
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    ok, frame = cap.read()
+    if not ok:
+        cap.release()
+        return path
+    h, w = frame.shape[:2]
+    step = max(1, round(fps / config.UPLOAD_FPS)) if config.UPLOAD_FPS else 1
+    if w <= width and step == 1:
+        cap.release()
+        return path
+    size = (min(w, width), max(2, round(h * min(w, width) / w)) // 2 * 2)
+    out_path = path.with_name("." + path.stem + ".mp4")  # oculto: el panel no lo lista a medio escribir
+    written.append(out_path)
+    out = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), fps / step, size)
+    try:
+        out.write(cv2.resize(frame, size, interpolation=cv2.INTER_AREA))
+        i = 1
+        while True:
+            if i % step == 0:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                out.write(cv2.resize(frame, size, interpolation=cv2.INTER_AREA))
+            elif not cap.grab():  # los cuadros que se descartan, sin convertirlos a imagen
+                break
+            i += 1
+    finally:
+        cap.release()
+        out.release()
+    final = path.with_suffix(".mp4")
+    path.unlink(missing_ok=True)
+    out_path.replace(final)
+    written.append(final)
+    return final
 
 
 def check_video(path: Path) -> float:

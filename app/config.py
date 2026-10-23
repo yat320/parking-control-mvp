@@ -56,10 +56,15 @@ TIME_SCALE = float(os.getenv("PARKING_TIME_SCALE", "60"))
 PROCESS_MAX_WIDTH = int(os.getenv("PARKING_MAX_WIDTH", "640"))
 
 # "Probar con tu video": límites de lo que se puede subir desde la web.
-UPLOAD_MAX_MB = int(os.getenv("PARKING_UPLOAD_MB", "80"))
+UPLOAD_MAX_MB = int(os.getenv("PARKING_UPLOAD_MB", "150"))  # un minuto de celular en 1080p
 UPLOAD_MAX_SECONDS = int(os.getenv("PARKING_UPLOAD_SECONDS", "90"))
 UPLOAD_KEEP = int(os.getenv("PARKING_UPLOAD_KEEP", "5"))       # se guardan solo los últimos
 UPLOAD_MIN_AREA = int(os.getenv("PARKING_UPLOAD_MIN_AREA", "1500"))  # en el video ya achicado
+# Los videos subidos se achican una sola vez al subirlos: decodificar 1080p cuadro por cuadro no
+# entra en un servidor chico (con 0,1 CPU, 35 s de video tardaban más de un minuto sin hacer nada).
+UPLOAD_WIDTH = int(os.getenv("PARKING_UPLOAD_WIDTH", "640"))          # cámara de la barrera
+UPLOAD_PLATES_WIDTH = int(os.getenv("PARKING_UPLOAD_PLATES_WIDTH", "1280"))  # si lee patentes: más detalle
+UPLOAD_FPS = float(os.getenv("PARKING_UPLOAD_FPS", "15"))
 
 # Patentes (cámara frontal). Se leen en los videos cuyo .json dice "patentes": true, o en
 # todos con PARKING_PLATES=1. Hace falta fast-alpr (requirements.txt); sin eso, no se leen.

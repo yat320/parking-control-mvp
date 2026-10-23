@@ -97,6 +97,14 @@ $("form-subir").onsubmit = (ev) => {
   ev.preventDefault();
   const archivo = $("archivo").files[0];
   if (!archivo) return;
+  // Avisar antes de subir: un video de más no tiene que esperar toda la subida para enterarse.
+  const maxMb = Number($("form-subir").dataset.maxMb) || 0;
+  const pesado = [archivo, $("archivo-frontal").files[0]].find((f) => f && maxMb && f.size > maxMb * 1024 * 1024);
+  if (pesado) {
+    $("subir-msg").textContent = `El video pesa ${Math.round(pesado.size / 1048576)} MB y el máximo es ${maxMb} MB. ` +
+      "Grabá uno más corto o en menor calidad (720p alcanza).";
+    return;
+  }
   const datos = new FormData();
   datos.append("video", archivo);
   datos.append("orientacion", document.querySelector('input[name="orientacion"]:checked').value);
@@ -115,7 +123,8 @@ $("form-subir").onsubmit = (ev) => {
   xhr.upload.onprogress = (e) => {
     if (e.lengthComputable) {
       barra.style.width = (100 * e.loaded / e.total) + "%";
-      msg.textContent = `Subiendo… ${Math.round(100 * e.loaded / e.total)}%`;
+      msg.textContent = e.loaded < e.total ? `Subiendo… ${Math.round(100 * e.loaded / e.total)}%`
+        : "Subido. Preparando el video (se achica una sola vez; uno grande de celular puede tardar un par de minutos)…";
     }
   };
   xhr.onerror = () => { msg.textContent = "Se cortó la subida. Probá de nuevo."; btn.disabled = false; };
@@ -124,7 +133,13 @@ $("form-subir").onsubmit = (ev) => {
     barra.style.width = "0";
     let r = {};
     try { r = JSON.parse(xhr.responseText); } catch (e) {}
-    if (xhr.status !== 200) { msg.textContent = r.detail || "No se pudo subir el video."; return; }
+    if (xhr.status !== 200) {
+      // Sin "detail", la respuesta no vino de la app sino del servicio donde corre (Render).
+      msg.textContent = r.detail || ([502, 503, 504].includes(xhr.status)
+        ? `El servidor no respondió (error ${xhr.status}): puede estar despertando o actualizándose. Probá de nuevo en un minuto.`
+        : `No se pudo subir el video (error ${xhr.status}).`);
+      return;
+    }
     msg.textContent = "Subido. Procesando… mirá el video de arriba.";
     $("archivo").value = "";
     $("archivo-frontal").value = "";
